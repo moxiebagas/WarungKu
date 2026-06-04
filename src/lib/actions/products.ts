@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { slugify } from "@/lib/slug";
+import { updateProductPrice } from "@/lib/stock-core";
 
 export interface ActionResult {
   ok: boolean;
@@ -13,6 +14,7 @@ function revalidateAll() {
   revalidatePath("/products");
   revalidatePath("/dashboard");
   revalidatePath("/stock");
+  revalidatePath("/reports");
 }
 
 async function uniqueSlug(base: string, ignoreId?: string): Promise<string> {
@@ -37,6 +39,8 @@ export async function createProduct(input: {
   unit: string;
   minStock: number;
   initialStock: number;
+  sellingPrice: number;
+  costPrice: number;
 }): Promise<ActionResult> {
   const name = input.name.trim();
   const unit = input.unit.trim();
@@ -44,6 +48,8 @@ export async function createProduct(input: {
   if (!unit) return { ok: false, error: "Satuan wajib diisi." };
   if (input.minStock < 0 || input.initialStock < 0)
     return { ok: false, error: "Nilai stok tidak boleh negatif." };
+  if (input.sellingPrice < 0 || input.costPrice < 0)
+    return { ok: false, error: "Harga tidak boleh negatif." };
 
   const supabase = getSupabaseAdmin();
   const slug = await uniqueSlug(slugify(name));
@@ -54,6 +60,8 @@ export async function createProduct(input: {
     unit,
     min_stock: input.minStock,
     current_stock: input.initialStock,
+    selling_price: input.sellingPrice,
+    cost_price: input.costPrice,
   });
 
   if (error) return { ok: false, error: error.message };
@@ -66,6 +74,8 @@ export async function updateProduct(input: {
   name: string;
   unit: string;
   minStock: number;
+  sellingPrice: number;
+  costPrice: number;
   isActive: boolean;
 }): Promise<ActionResult> {
   const name = input.name.trim();
@@ -73,6 +83,8 @@ export async function updateProduct(input: {
   if (!name) return { ok: false, error: "Nama barang wajib diisi." };
   if (!unit) return { ok: false, error: "Satuan wajib diisi." };
   if (input.minStock < 0) return { ok: false, error: "Stok minimum tidak boleh negatif." };
+  if (input.sellingPrice < 0 || input.costPrice < 0)
+    return { ok: false, error: "Harga tidak boleh negatif." };
 
   const supabase = getSupabaseAdmin();
   const slug = await uniqueSlug(slugify(name), input.id);
@@ -84,11 +96,24 @@ export async function updateProduct(input: {
       slug,
       unit,
       min_stock: input.minStock,
+      selling_price: input.sellingPrice,
+      cost_price: input.costPrice,
       is_active: input.isActive,
     })
     .eq("id", input.id);
 
   if (error) return { ok: false, error: error.message };
+  revalidateAll();
+  return { ok: true };
+}
+
+/** Quick price-only update (used by the products page price cell). */
+export async function updatePrice(
+  productId: string,
+  sellingPrice: number
+): Promise<ActionResult> {
+  const res = await updateProductPrice(productId, sellingPrice);
+  if (!res.ok) return { ok: false, error: res.error };
   revalidateAll();
   return { ok: true };
 }

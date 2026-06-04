@@ -23,7 +23,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/status-badge";
 import { createProduct, updateProduct, setProductActive } from "@/lib/actions/products";
-import { formatQty } from "@/lib/format";
+import { formatQty, formatRupiah } from "@/lib/format";
 import type { Product } from "@/lib/types";
 
 export function ProductsManager({ products }: { products: Product[] }) {
@@ -49,6 +49,8 @@ export function ProductsManager({ products }: { products: Product[] }) {
     const name = String(form.get("name") ?? "");
     const unit = String(form.get("unit") ?? "");
     const minStock = Number(form.get("minStock") ?? 0);
+    const sellingPrice = Number(form.get("sellingPrice") ?? 0);
+    const costPrice = Number(form.get("costPrice") ?? 0);
 
     startTransition(async () => {
       setError(null);
@@ -59,11 +61,20 @@ export function ProductsManager({ products }: { products: Product[] }) {
           name,
           unit,
           minStock,
+          sellingPrice,
+          costPrice,
           isActive: form.get("isActive") === "on",
         });
       } else {
         const initialStock = Number(form.get("initialStock") ?? 0);
-        res = await createProduct({ name, unit, minStock, initialStock });
+        res = await createProduct({
+          name,
+          unit,
+          minStock,
+          initialStock,
+          sellingPrice,
+          costPrice,
+        });
       }
       if (res.ok) setOpen(false);
       else setError(res.error ?? "Gagal menyimpan.");
@@ -92,6 +103,8 @@ export function ProductsManager({ products }: { products: Product[] }) {
               <TableHead>Satuan</TableHead>
               <TableHead className="text-right">Stok</TableHead>
               <TableHead className="text-right">Min.</TableHead>
+              <TableHead className="text-right">Harga Jual</TableHead>
+              <TableHead className="text-right">Nilai Stok</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Aktif</TableHead>
               <TableHead className="text-right">Aksi</TableHead>
@@ -100,7 +113,7 @@ export function ProductsManager({ products }: { products: Product[] }) {
           <TableBody>
             {products.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground">
+                <TableCell colSpan={9} className="text-center text-muted-foreground">
                   Belum ada barang.
                 </TableCell>
               </TableRow>
@@ -111,6 +124,16 @@ export function ProductsManager({ products }: { products: Product[] }) {
                   <TableCell>{p.unit}</TableCell>
                   <TableCell className="text-right">{formatQty(p.current_stock)}</TableCell>
                   <TableCell className="text-right">{formatQty(p.min_stock)}</TableCell>
+                  <TableCell className="text-right">
+                    {Number(p.selling_price) > 0 ? (
+                      formatRupiah(p.selling_price)
+                    ) : (
+                      <Badge variant="warning">Belum diset</Badge>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {formatRupiah(Number(p.current_stock) * Number(p.selling_price))}
+                  </TableCell>
                   <TableCell>
                     <StatusBadge stock={p.current_stock} minStock={p.min_stock} />
                   </TableCell>
@@ -174,6 +197,30 @@ export function ProductsManager({ products }: { products: Product[] }) {
                   step="any"
                   defaultValue={editing?.min_stock ?? 0}
                   required
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="sellingPrice">Harga Jual (Rp)</Label>
+                <Input
+                  id="sellingPrice"
+                  name="sellingPrice"
+                  type="number"
+                  min={0}
+                  step="any"
+                  defaultValue={editing?.selling_price ?? 0}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="costPrice">Harga Modal (Rp, opsional)</Label>
+                <Input
+                  id="costPrice"
+                  name="costPrice"
+                  type="number"
+                  min={0}
+                  step="any"
+                  defaultValue={editing?.cost_price ?? 0}
                 />
               </div>
             </div>

@@ -61,12 +61,14 @@ export async function POST(req: Request) {
 
   try {
     const payload = await readPayload(req);
+    console.log("[fonnte webhook] raw payload", JSON.stringify(payload));
+
     const rawSender = pick(payload, SENDER_KEYS);
     const rawMessage = pick(payload, MESSAGE_KEYS);
 
     console.log(
-      "[fonnte webhook] incoming",
-      JSON.stringify({ rawSender, rawMessage, keys: Object.keys(payload) })
+      "[fonnte webhook] extracted",
+      JSON.stringify({ rawSender, rawMessage })
     );
 
     if (!rawSender || typeof rawMessage !== "string") {

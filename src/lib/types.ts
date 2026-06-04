@@ -9,6 +9,8 @@ export interface Product {
   unit: string;
   current_stock: number;
   min_stock: number;
+  selling_price: number;
+  cost_price: number | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -21,6 +23,8 @@ export interface StockMovement {
   qty: number;
   stock_before: number;
   stock_after: number;
+  unit_price: number;
+  total_amount: number;
   source: string;
   phone_number: string | null;
   note: string | null;

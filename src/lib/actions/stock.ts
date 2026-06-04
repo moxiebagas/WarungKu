@@ -2,14 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { executeStockMovement } from "@/lib/stock-core";
 import type { MovementType } from "@/lib/types";
 import type { ActionResult } from "./products";
-
-const ERROR_LABELS: Record<string, string> = {
-  PRODUCT_NOT_FOUND: "Barang tidak ditemukan.",
-  INVALID_QTY: "Jumlah harus lebih dari 0.",
-  INVALID_MOVEMENT_TYPE: "Jenis pergerakan tidak valid.",
-};
 
 export async function applyManualMovement(input: {
   productId: string;
@@ -35,21 +30,21 @@ export async function applyManualMovement(input: {
     }
   }
 
-  const { error } = await supabase.rpc("apply_manual_movement", {
-    p_product_id: input.productId,
-    p_movement_type: input.movementType,
-    p_qty: input.qty,
-    p_note: input.note?.trim() || null,
+  // Same executor as WhatsApp: records the OUT price snapshot + revenue.
+  const exec = await executeStockMovement({
+    productId: input.productId,
+    movementType: input.movementType,
+    qty: input.qty,
+    source: "ADMIN",
+    note: input.note?.trim() || null,
   });
 
-  if (error) {
-    const key = Object.keys(ERROR_LABELS).find((k) => error.message.includes(k));
-    return { ok: false, error: key ? ERROR_LABELS[key] : error.message };
-  }
+  if (!exec.ok) return { ok: false, error: exec.error };
 
   revalidatePath("/stock");
   revalidatePath("/dashboard");
   revalidatePath("/products");
   revalidatePath("/history");
+  revalidatePath("/reports");
   return { ok: true };
 }

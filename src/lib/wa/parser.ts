@@ -1,65 +1,84 @@
 import type { MovementType } from "../types";
+import { parseIndoNumber } from "../format";
 
 export type ParsedCommand =
-  | { kind: "confirm" }
-  | { kind: "cancel" }
-  | { kind: "summary" }
+  | { kind: "priceUpdate"; product: string; price: number }
+  | { kind: "priceCheck"; product: string }
   | { kind: "check"; product: string }
+  | { kind: "summary" }
   | { kind: "update"; product: string; movementType: MovementType; qty: number }
   | { kind: "unknown" };
 
 /** Normalize an incoming message: trim, lowercase, collapse spaces. */
 export function normalizeMessage(raw: string): string {
-  return (raw ?? "")
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim();
+  return (raw ?? "").toLowerCase().replace(/\s+/g, " ").trim();
 }
 
-function parseQty(value: string): number {
-  return parseFloat(value.replace(",", "."));
-}
+// A numeric token in Indonesian format: digits with optional . , grouping/decimals.
+const NUM = "([0-9]+(?:[.,][0-9]+)*)";
 
-const RE_SET = /^stok\s+(.+?)\s+([0-9]+(?:[.,][0-9]+)?)$/;
-const RE_CHECK = /^cek\s+(.+)$/;
-const RE_INOUT = /^(.+?)\s*([+-])\s*([0-9]+(?:[.,][0-9]+)?)$/;
+const RE_SET_HARGA = new RegExp(`^set harga (.+?) ${NUM}$`);
+const RE_HARGA = new RegExp(`^harga (.+?) ${NUM}$`);
+const RE_PRODUCT_HARGA = new RegExp(`^(.+?) harga ${NUM}$`);
+const RE_CEK_HARGA = /^cek harga (.+)$/;
+const RE_CEK = /^cek (.+)$/;
+const RE_SET_STOCK = new RegExp(`^stok (.+?) ${NUM}$`);
+const RE_INOUT = new RegExp(`^(.+?)\\s*([+-])\\s*${NUM}$`);
 
 /**
  * Parse a normalized message into a structured command.
- * Order is intentional: control codes first, then keyword commands,
- * then the generic +/- product update.
+ * Priority (per spec):
+ *   1. price update   (harga / set harga / {product} harga)
+ *   2. price check     (cek harga {product})
+ *   3. stock check     (cek {product})
+ *   4. stock summary   (stok)
+ *   5. stock adjust    (stok {product} {qty})
+ *   6. stock movement  ({product} +/-{qty})
  */
 export function parseCommand(normalized: string): ParsedCommand {
   const m = normalized;
 
-  if (m === "1") return { kind: "confirm" };
-  if (m === "2") return { kind: "cancel" };
+  // 1. Price update
+  let match = RE_SET_HARGA.exec(m) ?? RE_HARGA.exec(m);
+  if (match) {
+    return { kind: "priceUpdate", product: match[1].trim(), price: parseIndoNumber(match[2]) };
+  }
+  match = RE_PRODUCT_HARGA.exec(m);
+  if (match && match[1].trim() && match[1].trim() !== "cek" && match[1].trim() !== "set") {
+    return { kind: "priceUpdate", product: match[1].trim(), price: parseIndoNumber(match[2]) };
+  }
+
+  // 2. Price check
+  match = RE_CEK_HARGA.exec(m);
+  if (match) return { kind: "priceCheck", product: match[1].trim() };
+
+  // 3. Stock check
+  match = RE_CEK.exec(m);
+  if (match) return { kind: "check", product: match[1].trim() };
+
+  // 4. Stock summary
   if (m === "stok") return { kind: "summary" };
 
-  const check = RE_CHECK.exec(m);
-  if (check) return { kind: "check", product: check[1].trim() };
-
-  const set = RE_SET.exec(m);
-  if (set) {
+  // 5. Stock adjustment
+  match = RE_SET_STOCK.exec(m);
+  if (match) {
     return {
       kind: "update",
-      product: set[1].trim(),
+      product: match[1].trim(),
       movementType: "ADJUSTMENT",
-      qty: parseQty(set[2]),
+      qty: parseIndoNumber(match[2]),
     };
   }
 
-  const inout = RE_INOUT.exec(m);
-  if (inout) {
-    const product = inout[1].trim();
-    if (product.length > 0) {
-      return {
-        kind: "update",
-        product,
-        movementType: inout[2] === "+" ? "IN" : "OUT",
-        qty: parseQty(inout[3]),
-      };
-    }
+  // 6. Stock movement (+/-)
+  match = RE_INOUT.exec(m);
+  if (match && match[1].trim()) {
+    return {
+      kind: "update",
+      product: match[1].trim(),
+      movementType: match[2] === "+" ? "IN" : "OUT",
+      qty: parseIndoNumber(match[3]),
+    };
   }
 
   return { kind: "unknown" };

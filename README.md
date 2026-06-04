@@ -13,8 +13,10 @@ shadcn/ui-style components · Recharts · Fonnte WhatsApp webhook · Vercel.
 
 1. Create a project at [supabase.com](https://supabase.com).
 2. Open **SQL Editor** and run [`supabase/schema.sql`](supabase/schema.sql).
-3. Then run [`supabase/seed.sql`](supabase/seed.sql) to load the sample products.
-4. From **Project Settings → API**, copy the Project URL, the `anon` key,
+3. Run [`supabase/migration_pricing.sql`](supabase/migration_pricing.sql) to add
+   pricing/revenue columns and the immediate-execution RPC. (Required.)
+4. Then run [`supabase/seed.sql`](supabase/seed.sql) to load the sample products.
+5. From **Project Settings → API**, copy the Project URL, the `anon` key,
    and the `service_role` key.
 
 RLS is enabled on every table with no public policies — all access goes
@@ -60,20 +62,26 @@ A `GET` on the webhook URL returns `{ "ok": true }` for a quick health check.
 | Command | Meaning |
 | --- | --- |
 | `beras +25` | Add 25 to Beras |
-| `beras -5` | Reduce 5 from Beras |
+| `beras -5` | Reduce 5 from Beras (recorded as a sale → revenue) |
 | `stok beras 10` | Set Beras stock to exactly 10 |
-| `cek beras` | Show current stock of Beras |
+| `harga beras 15000` | Set Beras selling price (also `set harga beras 15000`, `beras harga 15000`) |
+| `cek beras` | Show Beras stock, price, and stock value |
+| `cek harga beras` | Show Beras selling price |
 | `stok` | Show full stock summary (low stock first) |
-| `1` | Confirm the latest pending command |
-| `2` | Cancel the latest pending command |
 
-Every stock-changing command asks for confirmation first and expires after
-**5 minutes**.
+Commands execute **immediately** once valid — there is no confirmation step.
+Prices accept Indonesian formats (`15000`, `15.000`, `15,000`).
+
+**Revenue** is recorded only from `OUT` (sale) movements: at the moment of the
+sale the product's current `selling_price` is snapshotted into
+`stock_movements.unit_price`, and `total_amount = qty × unit_price`. Reports sum
+`total_amount`, so changing a product's price never alters historical revenue.
 
 ## Dashboard pages
 
-- `/dashboard` — summary cards, low-stock list, recent movements, charts
-- `/products` — manage products (create / edit / activate-deactivate)
+- `/dashboard` — revenue cards (today → year), stock value, revenue charts (daily 30d, monthly 12m, top products by revenue/qty), IN vs OUT, recent sales, low-stock, products without a price
+- `/reports` — revenue reports with period shortcuts + custom date range + product filter; revenue by product and by date; CSV export
+- `/products` — manage products incl. selling/cost price and stock value
 - `/stock` — manual stock correction (admin/emergency only)
 - `/history` — full movement history with filters
 - `/settings/whatsapp` — manage allowed WhatsApp numbers

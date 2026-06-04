@@ -1,26 +1,20 @@
 import "server-only";
 import { getSupabaseAdmin } from "./supabase/admin";
 import type { Product, StockMovement } from "./types";
+import {
+  getAllRevenueSummary,
+  getDailyRevenueSeries,
+  getMonthlyRevenueSeries,
+  getTopProductsByRevenue,
+  getTopProductsByQuantity,
+  periodToRange,
+  type Period,
+  type RevenueByProductRow,
+} from "./revenue";
+import { jakartaDateKey, dayLabel, shortDateLabel, monthLabel } from "./datetime";
 
 export interface MovementWithProduct extends StockMovement {
   products: { name: string; unit: string } | null;
-}
-
-const JAKARTA = "Asia/Jakarta";
-
-/** YYYY-MM-DD in Asia/Jakarta. */
-function jakartaDateKey(d: Date): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: JAKARTA }).format(d);
-}
-
-/** Short day label (e.g. "Sen 03") in Asia/Jakarta. */
-function dayLabel(key: string): string {
-  const d = new Date(`${key}T00:00:00+07:00`);
-  return new Intl.DateTimeFormat("id-ID", {
-    weekday: "short",
-    day: "2-digit",
-    timeZone: JAKARTA,
-  }).format(d);
 }
 
 export async function getProducts(): Promise<Product[]> {
@@ -34,51 +28,69 @@ export async function getProducts(): Promise<Product[]> {
 }
 
 export interface DashboardData {
+  revenue: Record<Period, number>;
+  totalStockValue: number;
   totalProducts: number;
   lowStockCount: number;
-  movementsToday: number;
-  lastUpdate: string | null;
-  lowStockProducts: Product[];
-  recentMovements: MovementWithProduct[];
+  missingPriceCount: number;
+  dailyRevenue: { label: string; revenue: number }[];
+  monthlyRevenue: { label: string; revenue: number }[];
+  topByRevenue: RevenueByProductRow[];
+  topByQuantity: RevenueByProductRow[];
   weekly: { day: string; IN: number; OUT: number }[];
-  topProducts: { name: string; count: number }[];
-  lowStockChart: { name: string; stok: number; minimum: number }[];
-  inOutTotals: { name: string; value: number }[];
+  recentSales: MovementWithProduct[];
+  lowStockProducts: Product[];
+  missingPriceProducts: Product[];
+  lastUpdate: string | null;
 }
 
 export async function getDashboardData(): Promise<DashboardData> {
   const supabase = getSupabaseAdmin();
-
   const now = new Date();
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-  const todayKey = jakartaDateKey(now);
+  const monthRange = periodToRange("month", now);
 
-  const [{ data: products }, { data: weekMovements }, { data: monthMovements }, { data: recent }] =
-    await Promise.all([
-      supabase.from("products").select("*").eq("is_active", true),
-      supabase
-        .from("stock_movements")
-        .select("*")
-        .gte("created_at", sevenDaysAgo.toISOString()),
-      supabase
-        .from("stock_movements")
-        .select("product_id, products(name)")
-        .gte("created_at", thirtyDaysAgo.toISOString()),
-      supabase
-        .from("stock_movements")
-        .select("*, products(name, unit)")
-        .order("created_at", { ascending: false })
-        .limit(10),
-    ]);
+  const [
+    revenue,
+    dailyRaw,
+    monthlyRaw,
+    topByRevenue,
+    topByQuantity,
+    { data: products },
+    { data: weekMovements },
+    { data: recent },
+  ] = await Promise.all([
+    getAllRevenueSummary(),
+    getDailyRevenueSeries(30, now),
+    getMonthlyRevenueSeries(12, now),
+    getTopProductsByRevenue(monthRange, 10),
+    getTopProductsByQuantity(monthRange, 10),
+    supabase.from("products").select("*").eq("is_active", true),
+    supabase.from("stock_movements").select("*").gte("created_at", sevenDaysAgo.toISOString()),
+    supabase
+      .from("stock_movements")
+      .select("*, products(name, unit)")
+      .eq("movement_type", "OUT")
+      .order("created_at", { ascending: false })
+      .limit(10),
+  ]);
 
   const activeProducts = (products ?? []) as Product[];
   const week = (weekMovements ?? []) as StockMovement[];
-  const recentMovements = (recent ?? []) as MovementWithProduct[];
+  const recentSales = (recent ?? []) as MovementWithProduct[];
 
   const lowStockProducts = activeProducts
     .filter((p) => p.current_stock <= p.min_stock)
     .sort((a, b) => a.current_stock - b.current_stock);
+
+  const missingPriceProducts = activeProducts
+    .filter((p) => Number(p.selling_price) <= 0)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const totalStockValue = activeProducts.reduce(
+    (sum, p) => sum + Number(p.current_stock) * Number(p.selling_price),
+    0
+  );
 
   // ----- Weekly IN/OUT series (last 7 days) -----
   const dayKeys: string[] = [];
@@ -100,47 +112,20 @@ export async function getDashboardData(): Promise<DashboardData> {
     OUT: weeklyMap.get(k)!.OUT,
   }));
 
-  const inOutTotals = [
-    { name: "Masuk", value: week.filter((m) => m.movement_type === "IN").reduce((s, m) => s + Number(m.qty), 0) },
-    { name: "Keluar", value: week.filter((m) => m.movement_type === "OUT").reduce((s, m) => s + Number(m.qty), 0) },
-  ];
-
-  // ----- Top 10 most-updated products (last 30 days) -----
-  const counts = new Map<string, number>();
-  for (const m of (monthMovements ?? []) as unknown as {
-    products: { name: string } | null;
-  }[]) {
-    const name = m.products?.name ?? "?";
-    counts.set(name, (counts.get(name) ?? 0) + 1);
-  }
-  const topProducts = [...counts.entries()]
-    .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 10);
-
-  // ----- Low-stock chart -----
-  const lowStockChart = lowStockProducts.slice(0, 10).map((p) => ({
-    name: p.name,
-    stok: Number(p.current_stock),
-    minimum: Number(p.min_stock),
-  }));
-
-  const movementsToday = week.filter(
-    (m) => jakartaDateKey(new Date(m.created_at)) === todayKey
-  ).length;
-
-  const lastUpdate = recentMovements[0]?.created_at ?? null;
-
   return {
+    revenue,
+    totalStockValue,
     totalProducts: activeProducts.length,
     lowStockCount: lowStockProducts.length,
-    movementsToday,
-    lastUpdate,
-    lowStockProducts,
-    recentMovements,
+    missingPriceCount: missingPriceProducts.length,
+    dailyRevenue: dailyRaw.map((r) => ({ label: shortDateLabel(r.date), revenue: r.revenue })),
+    monthlyRevenue: monthlyRaw.map((r) => ({ label: monthLabel(r.month), revenue: r.revenue })),
+    topByRevenue,
+    topByQuantity,
     weekly,
-    topProducts,
-    lowStockChart,
-    inOutTotals,
+    recentSales,
+    lowStockProducts,
+    missingPriceProducts,
+    lastUpdate: recentSales[0]?.created_at ?? null,
   };
 }

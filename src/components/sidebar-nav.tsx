@@ -8,11 +8,13 @@ import {
   ClipboardEdit,
   History,
   MessageCircle,
+  BarChart3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV = [
   { href: "/dashboard", label: "Ringkasan", icon: LayoutDashboard },
+  { href: "/reports", label: "Laporan", icon: BarChart3 },
   { href: "/products", label: "Barang", icon: Package },
   { href: "/stock", label: "Koreksi Stok", icon: ClipboardEdit },
   { href: "/history", label: "Riwayat", icon: History },

@@ -1,4 +1,13 @@
-import { Package, AlertTriangle, Activity, Clock } from "lucide-react";
+import {
+  Wallet,
+  CalendarDays,
+  CalendarRange,
+  CalendarClock,
+  Boxes,
+  AlertTriangle,
+  TrendingUp,
+  Tag,
+} from "lucide-react";
 import { StatCard } from "@/components/stat-card";
 import { StatusBadge } from "@/components/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,14 +19,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  WeeklyMovementChart,
-  TopProductsChart,
-  LowStockChart,
-  InOutChart,
-} from "@/components/charts";
+import { WeeklyMovementChart, RevenueChart, TopProductsChart } from "@/components/charts";
 import { getDashboardData } from "@/lib/queries";
-import { formatDateTime, formatQty, MOVEMENT_LABEL } from "@/lib/format";
+import { formatDateTime, formatQty, formatRupiah } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -29,65 +33,123 @@ export default async function DashboardPage() {
       <div>
         <h1 className="text-2xl font-bold">Ringkasan</h1>
         <p className="text-sm text-muted-foreground">
-          Pantauan stok toko secara keseluruhan.
+          Pantauan pendapatan dan stok toko.
         </p>
       </div>
 
+      {/* Revenue + stock summary cards */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard title="Total Barang" value={d.totalProducts} icon={Package} />
+        <StatCard title="Pendapatan Hari Ini" value={formatRupiah(d.revenue.today)} icon={Wallet} />
+        <StatCard title="Pendapatan Minggu Ini" value={formatRupiah(d.revenue.week)} icon={CalendarDays} />
+        <StatCard title="Pendapatan Bulan Ini" value={formatRupiah(d.revenue.month)} icon={CalendarRange} />
+        <StatCard title="Pendapatan 3 Bulan" value={formatRupiah(d.revenue["3month"])} icon={CalendarClock} />
+        <StatCard title="Pendapatan 6 Bulan" value={formatRupiah(d.revenue["6month"])} icon={CalendarClock} />
+        <StatCard title="Pendapatan Tahun Ini" value={formatRupiah(d.revenue.year)} icon={TrendingUp} />
+        <StatCard title="Nilai Stok Saat Ini" value={formatRupiah(d.totalStockValue)} icon={Boxes} />
         <StatCard
           title="Stok Menipis"
           value={d.lowStockCount}
           icon={AlertTriangle}
           accent={d.lowStockCount > 0 ? "warning" : "default"}
-        />
-        <StatCard title="Pergerakan Hari Ini" value={d.movementsToday} icon={Activity} />
-        <StatCard
-          title="Update Terakhir"
-          value={d.lastUpdate ? formatDateTime(d.lastUpdate) : "-"}
-          icon={Clock}
+          hint={`${d.totalProducts} barang aktif`}
         />
       </div>
 
+      {/* Charts */}
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Pergerakan Stok 7 Hari Terakhir</CardTitle>
+            <CardTitle>Pendapatan Harian (30 Hari)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <RevenueChart data={d.dailyRevenue} />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Pendapatan Bulanan (12 Bulan)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <RevenueChart data={d.monthlyRevenue} color="#2563eb" />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Top 10 Barang — Pendapatan (Bulan Ini)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <TopProductsChart
+              mode="revenue"
+              data={d.topByRevenue.map((p) => ({ name: p.name, value: p.revenue }))}
+            />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Top 10 Barang — Qty Terjual (Bulan Ini)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <TopProductsChart
+              mode="qty"
+              data={d.topByQuantity.map((p) => ({ name: p.name, value: p.qty }))}
+            />
+          </CardContent>
+        </Card>
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Pergerakan Masuk vs Keluar (7 Hari)</CardTitle>
           </CardHeader>
           <CardContent>
             <WeeklyMovementChart data={d.weekly} />
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Perbandingan Masuk vs Keluar</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <InOutChart data={d.inOutTotals} />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Barang Paling Sering Diupdate</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <TopProductsChart data={d.topProducts} />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Barang Stok Menipis</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <LowStockChart data={d.lowStockChart} />
-          </CardContent>
-        </Card>
       </div>
 
+      {/* Tables */}
       <div className="grid gap-4 lg:grid-cols-2">
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Penjualan Terbaru</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {d.recentSales.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Belum ada penjualan.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Waktu</TableHead>
+                    <TableHead>Barang</TableHead>
+                    <TableHead className="text-right">Qty</TableHead>
+                    <TableHead className="text-right">Harga Satuan</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {d.recentSales.map((m) => (
+                    <TableRow key={m.id}>
+                      <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                        {formatDateTime(m.created_at)}
+                      </TableCell>
+                      <TableCell className="font-medium">{m.products?.name ?? "-"}</TableCell>
+                      <TableCell className="text-right">
+                        {formatQty(m.qty)} {m.products?.unit ?? ""}
+                      </TableCell>
+                      <TableCell className="text-right">{formatRupiah(m.unit_price)}</TableCell>
+                      <TableCell className="text-right font-medium">
+                        {formatRupiah(m.total_amount)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
-            <CardTitle>Daftar Stok Menipis</CardTitle>
+            <CardTitle>Stok Menipis</CardTitle>
           </CardHeader>
           <CardContent>
             {d.lowStockProducts.length === 0 ? (
@@ -121,32 +183,28 @@ export default async function DashboardPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Pergerakan Terbaru</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Tag className="h-4 w-4" /> Barang Tanpa Harga
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            {d.recentMovements.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Belum ada pergerakan stok.</p>
+            {d.missingPriceProducts.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Semua barang sudah punya harga. 🎉</p>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Waktu</TableHead>
                     <TableHead>Barang</TableHead>
-                    <TableHead>Jenis</TableHead>
-                    <TableHead className="text-right">Jumlah</TableHead>
+                    <TableHead>Satuan</TableHead>
+                    <TableHead className="text-right">Stok</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {d.recentMovements.map((m) => (
-                    <TableRow key={m.id}>
-                      <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                        {formatDateTime(m.created_at)}
-                      </TableCell>
-                      <TableCell className="font-medium">{m.products?.name ?? "-"}</TableCell>
-                      <TableCell>{MOVEMENT_LABEL[m.movement_type]}</TableCell>
-                      <TableCell className="text-right">
-                        {formatQty(m.qty)} {m.products?.unit ?? ""}
-                      </TableCell>
+                  {d.missingPriceProducts.map((p) => (
+                    <TableRow key={p.id}>
+                      <TableCell className="font-medium">{p.name}</TableCell>
+                      <TableCell>{p.unit}</TableCell>
+                      <TableCell className="text-right">{formatQty(p.current_stock)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

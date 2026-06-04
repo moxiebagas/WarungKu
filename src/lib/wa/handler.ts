@@ -2,50 +2,92 @@ import "server-only";
 import { getSupabaseAdmin } from "../supabase/admin";
 import { matchProduct } from "./match";
 import { normalizeMessage, parseCommand } from "./parser";
-import type { PendingStockCommand, Product } from "../types";
+import type { MovementType, Product } from "../types";
 import { getStockStatus } from "../format";
+import { executeStockMovement, updateProductPrice } from "../stock-core";
 import * as M from "./messages";
-
-const PENDING_TTL_MINUTES = 5;
 
 function allowNegativeStock(): boolean {
   return process.env.ALLOW_NEGATIVE_STOCK === "true";
 }
 
+// Help is opt-in only: examples are sent ONLY when an authorized sender
+// explicitly asks for them, never as a fallback for unknown text.
+const HELP_TRIGGERS = new Set(["format", "bantuan", "help", "contoh", "menu"]);
+
 /**
- * Process one incoming WhatsApp message and return the reply text.
- * Returns `null` when the message should be silently ignored
- * (we only do that for genuinely empty payloads).
+ * Process one incoming WhatsApp message and return the reply text, or `null`
+ * when the system must stay completely silent (no WhatsApp reply at all).
+ *
+ * Silent cases:
+ *   - sender not registered/active (never reveal registration status)
+ *   - authorization lookup error (don't leak that the system exists)
+ *   - empty message
+ *   - unsupported/unknown command from an authorized sender
  */
 export async function handleIncomingMessage(
   phoneNumber: string,
   rawMessage: string
 ): Promise<string | null> {
   const supabase = getSupabaseAdmin();
-  const normalized = normalizeMessage(rawMessage);
-  if (!normalized) return null;
 
-  // ---- Authorization ----
-  const { data: allowed } = await supabase
+  // ---- 1 & 2. Authorization FIRST, before any other processing ----
+  const { data: allowed, error: authError } = await supabase
     .from("allowed_whatsapp_numbers")
     .select("id")
     .eq("phone_number", phoneNumber)
     .eq("is_active", true)
     .maybeSingle();
 
-  if (!allowed) return M.MSG_UNAUTHORIZED;
+  if (authError) {
+    // Stay silent — we cannot confirm authorization, so reveal nothing.
+    console.error(
+      JSON.stringify({
+        event: "auth_lookup_error",
+        phone: phoneNumber,
+        message: authError.message,
+        action: "ignored",
+      })
+    );
+    return null;
+  }
 
+  // ---- 3. Unauthorized sender: log only, send nothing ----
+  if (!allowed) {
+    console.log(
+      JSON.stringify({
+        event: "unauthorized_sender",
+        phone: phoneNumber,
+        message: rawMessage,
+        action: "ignored",
+      })
+    );
+    return null;
+  }
+
+  // ---- 4. Normalize message (authorized senders only) ----
+  const normalized = normalizeMessage(rawMessage);
+  if (!normalized) return null;
+
+  // ---- 5. Opt-in help command ----
+  if (HELP_TRIGGERS.has(normalized)) {
+    console.log("[wa] help requested", { phone: phoneNumber });
+    return M.MSG_HELP;
+  }
+
+  // ---- 6. Valid command -> execute and reply ----
   const command = parseCommand(normalized);
+  console.log("[wa] parsed command", { phone: phoneNumber, kind: command.kind, normalized });
 
   switch (command.kind) {
-    case "confirm":
-      return handleConfirm(phoneNumber);
-    case "cancel":
-      return handleCancel(phoneNumber);
-    case "summary":
-      return handleSummary();
+    case "priceUpdate":
+      return handlePriceUpdate(command.product, command.price, phoneNumber);
+    case "priceCheck":
+      return handlePriceCheck(command.product);
     case "check":
       return handleCheck(command.product);
+    case "summary":
+      return handleSummary();
     case "update":
       return handleUpdate(
         phoneNumber,
@@ -54,98 +96,64 @@ export async function handleIncomingMessage(
         command.qty,
         normalized
       );
+    // ---- 7. Unsupported command: log only, send nothing ----
     case "unknown":
     default:
-      return M.MSG_HELP;
+      console.log(
+        JSON.stringify({
+          event: "unsupported_command",
+          phone: phoneNumber,
+          message: rawMessage,
+          action: "ignored",
+        })
+      );
+      return null;
   }
 }
 
-async function latestPending(
+async function handlePriceUpdate(
+  productText: string,
+  price: number,
   phoneNumber: string
-): Promise<PendingStockCommand | null> {
-  const supabase = getSupabaseAdmin();
-  const { data } = await supabase
-    .from("pending_stock_commands")
-    .select("*")
-    .eq("phone_number", phoneNumber)
-    .eq("status", "PENDING")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  return (data as PendingStockCommand) ?? null;
+): Promise<string> {
+  if (!Number.isFinite(price) || price < 0) return M.MSG_INVALID_PRICE;
+
+  const result = await matchProduct(productText);
+  console.log("[wa] price update product lookup", { productText, kind: result.kind });
+  if (result.kind === "none") return M.MSG_PRODUCT_NOT_FOUND;
+  if (result.kind === "ambiguous") return M.msgAmbiguous(result.products.map((p) => p.name));
+
+  const updated = await updateProductPrice(result.product.id, price);
+  if (!updated.ok || !updated.product) {
+    return updated.error ?? "Maaf, gagal mengubah harga.";
+  }
+  console.log("[wa] price update result", { phoneNumber, product: updated.product });
+  return M.msgPriceUpdated(updated.product.name, updated.product.selling_price, updated.product.unit);
 }
 
-async function handleConfirm(phoneNumber: string): Promise<string> {
-  const supabase = getSupabaseAdmin();
-  const pending = await latestPending(phoneNumber);
-  if (!pending) return M.MSG_NO_PENDING;
-
-  if (new Date(pending.expires_at).getTime() < Date.now()) {
-    await supabase
-      .from("pending_stock_commands")
-      .update({ status: "EXPIRED" })
-      .eq("id", pending.id);
-    return M.MSG_EXPIRED;
-  }
-
-  const { data, error } = await supabase.rpc("apply_pending_command", {
-    p_pending_id: pending.id,
-  });
-
-  if (error) {
-    const msg = error.message || "";
-    if (msg.includes("PENDING_EXPIRED")) return M.MSG_EXPIRED;
-    if (msg.includes("PENDING_NOT_FOUND")) return M.MSG_NO_PENDING;
-    console.error("[wa] apply_pending_command failed", error);
-    return "Maaf, terjadi kesalahan. Silakan coba lagi.";
-  }
-
-  const row = Array.isArray(data) ? data[0] : data;
-  if (!row) return "Maaf, terjadi kesalahan. Silakan coba lagi.";
-
-  return M.msgSuccess(
-    row.movement_type,
-    row.product_name,
-    Number(row.qty),
-    row.unit,
-    Number(row.stock_after)
-  );
-}
-
-async function handleCancel(phoneNumber: string): Promise<string> {
-  const supabase = getSupabaseAdmin();
-  const pending = await latestPending(phoneNumber);
-  if (!pending) return M.MSG_NO_PENDING;
-
-  await supabase
-    .from("pending_stock_commands")
-    .update({ status: "CANCELLED" })
-    .eq("id", pending.id);
-
-  return M.MSG_CANCELLED;
+async function handlePriceCheck(productText: string): Promise<string> {
+  const result = await matchProduct(productText);
+  if (result.kind === "none") return M.MSG_PRODUCT_NOT_FOUND;
+  if (result.kind === "ambiguous") return M.msgAmbiguous(result.products.map((p) => p.name));
+  const p = result.product;
+  return M.msgPriceCheck(p.name, Number(p.selling_price), p.unit);
 }
 
 async function handleCheck(productText: string): Promise<string> {
   const result = await matchProduct(productText);
   if (result.kind === "none") return M.MSG_PRODUCT_NOT_FOUND;
-  if (result.kind === "ambiguous") {
-    return M.msgAmbiguous(result.products.map((p) => p.name));
-  }
+  if (result.kind === "ambiguous") return M.msgAmbiguous(result.products.map((p) => p.name));
   const p = result.product;
-  return M.msgCheckStock(p.name, Number(p.current_stock), p.unit);
+  return M.msgCheckStock(p.name, Number(p.current_stock), p.unit, Number(p.selling_price));
 }
 
 async function handleSummary(): Promise<string> {
   const supabase = getSupabaseAdmin();
-  const { data } = await supabase
-    .from("products")
-    .select("*")
-    .eq("is_active", true);
+  const { data } = await supabase.from("products").select("*").eq("is_active", true);
 
   const products = (data ?? []) as Product[];
   if (products.length === 0) return "Belum ada barang aktif di sistem.";
 
-  // Low stock (Habis, then Menipis) on top, then the rest by name.
   const rank = (p: Product) => {
     const s = getStockStatus(p.current_stock, p.min_stock);
     if (s === "Habis") return 0;
@@ -166,19 +174,16 @@ async function handleSummary(): Promise<string> {
 async function handleUpdate(
   phoneNumber: string,
   productText: string,
-  movementType: "IN" | "OUT" | "ADJUSTMENT",
+  movementType: MovementType,
   qty: number,
   rawMessage: string
 ): Promise<string> {
-  const supabase = getSupabaseAdmin();
-
   if (!Number.isFinite(qty) || qty <= 0) return M.MSG_INVALID_QTY;
 
   const result = await matchProduct(productText);
+  console.log("[wa] stock update product lookup", { productText, kind: result.kind });
   if (result.kind === "none") return M.MSG_PRODUCT_NOT_FOUND;
-  if (result.kind === "ambiguous") {
-    return M.msgAmbiguous(result.products.map((p) => p.name));
-  }
+  if (result.kind === "ambiguous") return M.msgAmbiguous(result.products.map((p) => p.name));
 
   const product = result.product;
 
@@ -188,39 +193,44 @@ async function handleUpdate(
     !allowNegativeStock() &&
     Number(product.current_stock) - qty < 0
   ) {
-    return M.msgNegativeBlocked(
-      product.name,
-      Number(product.current_stock),
-      product.unit
-    );
+    console.warn("[wa] negative stock blocked", {
+      product: product.name,
+      current: product.current_stock,
+      qty,
+    });
+    return M.msgNegativeBlocked(product.name, Number(product.current_stock), product.unit);
   }
 
-  // Supersede any older pending commands from this sender so that "1"
-  // always refers to the newest request.
-  await supabase
-    .from("pending_stock_commands")
-    .update({ status: "EXPIRED" })
-    .eq("phone_number", phoneNumber)
-    .eq("status", "PENDING");
-
-  const expiresAt = new Date(
-    Date.now() + PENDING_TTL_MINUTES * 60 * 1000
-  ).toISOString();
-
-  const { error } = await supabase.from("pending_stock_commands").insert({
-    phone_number: phoneNumber,
-    product_id: product.id,
-    movement_type: movementType,
+  // Execute immediately — no pending confirmation.
+  const exec = await executeStockMovement({
+    productId: product.id,
+    movementType,
     qty,
-    raw_message: rawMessage,
-    status: "PENDING",
-    expires_at: expiresAt,
+    source: "WHATSAPP",
+    phoneNumber,
+    rawMessage,
   });
 
-  if (error) {
-    console.error("[wa] failed to create pending command", error);
-    return "Maaf, terjadi kesalahan. Silakan coba lagi.";
+  if (!exec.ok) {
+    console.error("[wa] stock movement failed", { phoneNumber, code: exec.code });
+    return exec.error || "Maaf, terjadi kesalahan. Silakan coba lagi.";
   }
 
-  return M.msgConfirm(movementType, product.name, qty, product.unit);
+  const d = exec.data;
+  console.log("[wa] stock movement ok", {
+    phoneNumber,
+    product: d.productName,
+    movementType: d.movementType,
+    revenue: d.totalAmount,
+  });
+
+  return M.msgStockSuccess({
+    movementType: d.movementType,
+    productName: d.productName,
+    qty: d.qty,
+    unit: d.unit,
+    stockAfter: d.stockAfter,
+    totalAmount: d.totalAmount,
+    unitPrice: d.unitPrice,
+  });
 }
