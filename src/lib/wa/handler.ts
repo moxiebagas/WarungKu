@@ -97,7 +97,7 @@ export async function handleIncomingMessage(
         normalized,
         command.paymentMethod
       );
-    // ---- 7. Unsupported command: log only, send nothing ----
+    // ---- 7. Unsupported command from an authorized sender: reply with help ----
     case "unknown":
     default:
       console.log(
@@ -105,10 +105,10 @@ export async function handleIncomingMessage(
           event: "unsupported_command",
           phone: phoneNumber,
           message: rawMessage,
-          action: "ignored",
+          action: "help_reply",
         })
       );
-      return null;
+      return M.MSG_HELP;
   }
 }
 
@@ -204,6 +204,15 @@ async function handleUpdate(
   }
 
   // Execute immediately — no pending confirmation.
+  // Payment method is stored for every transaction (IN purchase / OUT sale).
+  // OUT defaults to cash when omitted; ADJUSTMENT never carries a payment method.
+  const resolvedPayment: PaymentMethod | null =
+    movementType === "ADJUSTMENT"
+      ? null
+      : movementType === "OUT"
+        ? paymentMethod ?? "cash"
+        : paymentMethod ?? null;
+
   const exec = await executeStockMovement({
     productId: product.id,
     movementType,
@@ -211,7 +220,7 @@ async function handleUpdate(
     source: "WHATSAPP",
     phoneNumber,
     rawMessage,
-    paymentMethod: movementType === "OUT" ? paymentMethod ?? "cash" : null,
+    paymentMethod: resolvedPayment,
   });
 
   if (!exec.ok) {

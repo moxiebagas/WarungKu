@@ -17,8 +17,10 @@ shadcn/ui-style components · Recharts · Fonnte WhatsApp webhook · Vercel.
    pricing/revenue columns and the immediate-execution RPC. (Required.)
 4. Run [`supabase/migration_payments.sql`](supabase/migration_payments.sql) to add
    the `payment_method` column and the low-stock-alert RPC return. (Required.)
-5. Then run [`supabase/seed.sql`](supabase/seed.sql) to load the sample products.
-6. From **Project Settings → API**, copy the Project URL, the `anon` key,
+5. Run [`supabase/migration_v3_in_payment.sql`](supabase/migration_v3_in_payment.sql)
+   so IN (purchase) transactions also store their payment method. (Required.)
+6. Then run [`supabase/seed.sql`](supabase/seed.sql) to load the sample products.
+7. From **Project Settings → API**, copy the Project URL, the `anon` key,
    and the `service_role` key.
 
 RLS is enabled on every table with no public policies — all access goes
@@ -75,19 +77,39 @@ A `GET` on the webhook URL returns `{ "ok": true }` for a quick health check.
 
 | Command | Meaning |
 | --- | --- |
-| `jual minyak 2 cash` | Sell 2 Minyak, payment = cash (also `qris`, `hutang`) |
-| `beras +25` | Add 25 to Beras |
-| `beras -5` | Reduce 5 from Beras (recorded as a cash sale → revenue) |
-| `stok beras 10` | Set Beras stock to exactly 10 |
+| `beras 10 cash` | Stock **in** (purchase) 10 Beras, payment cash |
+| `beras -3 cash` | Stock **out** (sold) 3 Beras, payment cash |
+| `minyak 5 qris` / `gula 20 hutang` | Same, with QRIS / Hutang |
+| `stok beras 10` | Set Beras stock to exactly 10 (correction) |
 | `harga beras 15000` | Set Beras selling price (also `set harga beras 15000`, `beras harga 15000`) |
 | `cek beras` | Show Beras stock, price, and stock value |
 | `cek harga beras` | Show Beras selling price |
 | `stok` | Show full stock summary (low stock first) |
 
-**Payment methods:** `cash`, `qris`, `hutang`. Use the `jual <product> <qty> <method>`
-form to set it explicitly; `<product> -<qty>` and `jual` without a method default
-to `cash`. The method is snapshotted on the sale and drives the payment breakdowns
-in reports and charts.
+Canonical format: **`[barang] [qty] [cash|qris|hutang]`** — a positive qty
+(or `+`) is a stock-in/purchase, a negative qty (`-`) is a sale. Backward-compatible
+forms still work: `jual <product> <qty> <method>`, and bare `<product> +/-<qty>`
+(an OUT without a method defaults to `cash`). The payment method is stored on every
+IN/OUT transaction and drives the payment breakdowns in reports, charts, and the
+daily summary.
+
+Invalid commands from a registered group member are answered with the command
+examples above. Messages from unregistered senders, personal chats, and other
+groups are ignored silently.
+
+## Group operation
+
+Warungku runs inside **one dedicated WhatsApp group**.
+
+1. Create a WhatsApp group and add the Fonnte device number + the registered users.
+2. Send any message in the group, then read your Vercel logs — the webhook logs
+   `extracted {"isGroup":true,"groupId":"...","sender":"..."}`. Copy that `groupId`.
+3. Set it as `WHATSAPP_GROUP_ID` (and redeploy). From then on:
+   - only messages from that group are processed (personal chats / other groups are ignored),
+   - replies, daily summaries, and low-stock alerts all go to that group.
+
+> If `WHATSAPP_GROUP_ID` is **unset**, the app falls back to legacy personal-chat
+> mode (replies to the sender) so local testing still works.
 
 Commands execute **immediately** once valid — there is no confirmation step.
 Prices accept Indonesian formats (`15000`, `15.000`, `15,000`).

@@ -1,6 +1,6 @@
 import "server-only";
 import { getProducts } from "./queries";
-import { getRevenueByProduct, periodToRange } from "./revenue";
+import { getRevenueByProduct, getRevenueByPaymentMethod, periodToRange } from "./revenue";
 import { formatQty, formatRupiah } from "./format";
 
 /**
@@ -11,8 +11,9 @@ import { formatQty, formatRupiah } from "./format";
 export async function buildDailySummaryMessage(now = new Date()): Promise<string> {
   const range = periodToRange("today", now);
 
-  const [byProduct, products] = await Promise.all([
+  const [byProduct, byPayment, products] = await Promise.all([
     getRevenueByProduct(range),
+    getRevenueByPaymentMethod(range),
     getProducts(),
   ]);
 
@@ -26,12 +27,18 @@ export async function buildDailySummaryMessage(now = new Date()): Promise<string
   if (byProduct.length === 0) {
     lines.push("Belum ada penjualan hari ini.");
   } else {
-    lines.push("Terjual:");
+    lines.push("Penjualan:");
     for (const r of byProduct) {
-      lines.push(`- ${r.name}: ${formatQty(r.qty)} ${r.unit} — ${formatRupiah(r.revenue)}`);
+      lines.push(`- ${r.name}: ${formatQty(r.qty)} ${r.unit} (${formatRupiah(r.revenue)})`);
     }
+
+    lines.push("", "Rincian Metode Bayar:");
+    for (const p of byPayment) {
+      lines.push(`- ${p.label}: ${formatRupiah(p.revenue)}`);
+    }
+
     const total = byProduct.reduce((s, r) => s + r.revenue, 0);
-    lines.push("", `Total penjualan: ${formatRupiah(total)}`);
+    lines.push("", `Total Penjualan: ${formatRupiah(total)}`);
   }
 
   lines.push("", "Sisa Stok:");

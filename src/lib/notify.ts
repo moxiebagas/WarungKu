@@ -30,12 +30,9 @@ export async function maybeSendLowStockAlert(r: MovementResult): Promise<void> {
     const crossed = r.stockBefore > r.minStock && r.stockAfter <= r.minStock;
     if (!crossed) return;
 
-    const msg =
-      r.stockAfter <= 0
-        ? `⚠️ Stok ${r.productName} habis. Sisa stok saat ini: ${formatQty(r.stockAfter)}.`
-        : `⚠️ Stok ${r.productName} hampir habis. Sisa stok saat ini: ${formatQty(
-            r.stockAfter
-          )}.`;
+    const msg = `⚠️ Stok ${r.productName} mencapai batas minimum. Sisa stok saat ini: ${formatQty(
+      r.stockAfter
+    )}.`;
 
     console.log("[notify] low stock alert", {
       product: r.productName,

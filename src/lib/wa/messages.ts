@@ -14,23 +14,18 @@ export const MSG_INVALID_PRICE = "Harga tidak valid. Contoh: harga beras 15000";
 export const MSG_HELP = [
   "Format perintah:",
   "",
-  "Jual (dengan metode bayar):",
-  "jual minyak 2 cash",
-  "jual beras 1 qris",
-  "jual gula 3 hutang",
+  "Transaksi (barang qty metode):",
+  "beras 10 cash   (stok masuk)",
+  "minyak 5 qris   (stok masuk)",
+  "beras -3 cash   (terjual)",
+  "minyak -2 qris  (terjual)",
+  "Metode: cash / qris / hutang",
   "",
-  "Update stok:",
-  "beras +2",
-  "beras -2",
-  "stok beras 10",
+  "Set stok: stok beras 10",
   "",
-  "Cek:",
-  "cek beras",
-  "stok",
+  "Cek: cek beras | stok",
   "",
-  "Update harga:",
-  "harga beras 15000",
-  "cek harga beras",
+  "Harga: harga beras 15000 | cek harga beras",
 ].join("\n");
 
 export function msgAmbiguous(names: string[]): string {
@@ -59,6 +54,7 @@ export function msgStockSuccess(params: {
   if (movementType === "IN") {
     lines.push(`Stok ${productName} bertambah ${formatQty(qty)} ${unit}.`);
     lines.push(`Stok saat ini: ${formatQty(stockAfter)} ${unit}.`);
+    if (paymentMethod) lines.push(`Metode bayar: ${PAYMENT_LABEL[paymentMethod]}.`);
   } else if (movementType === "OUT") {
     lines.push(`Stok ${productName} berkurang ${formatQty(qty)} ${unit}.`);
     lines.push(`Stok saat ini: ${formatQty(stockAfter)} ${unit}.`);

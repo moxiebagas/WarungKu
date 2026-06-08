@@ -31,6 +31,9 @@ const RE_CEK_HARGA = /^cek harga (.+)$/;
 const RE_CEK = /^cek (.+)$/;
 const RE_JUAL_METHOD = new RegExp(`^jual (.+?) ${NUM} ${METHOD}$`);
 const RE_JUAL = new RegExp(`^jual (.+?) ${NUM}$`);
+// Simplified transaction format: [barang] [+/-qty] [method]
+// e.g. "beras 10 cash" (IN), "beras -3 cash" (OUT). Sign optional; "+"/none = IN.
+const RE_TXN_METHOD = new RegExp(`^(.+?) ([+-]?)${NUM} ${METHOD}$`);
 const RE_SET_STOCK = new RegExp(`^stok (.+?) ${NUM}$`);
 const RE_INOUT = new RegExp(`^(.+?)\\s*([+-])\\s*${NUM}$`);
 
@@ -87,6 +90,19 @@ export function parseCommand(normalized: string): ParsedCommand {
       movementType: "OUT",
       qty: parseIndoNumber(match[2]),
       paymentMethod: DEFAULT_PAYMENT,
+    };
+  }
+
+  // 4b. Simplified transaction: [barang] [+/-qty] [method]
+  match = RE_TXN_METHOD.exec(m);
+  if (match && match[1].trim()) {
+    const isOut = match[2] === "-";
+    return {
+      kind: "update",
+      product: match[1].trim(),
+      movementType: isOut ? "OUT" : "IN",
+      qty: parseIndoNumber(match[3]),
+      paymentMethod: match[4] as PaymentMethod,
     };
   }
 
