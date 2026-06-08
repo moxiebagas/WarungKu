@@ -1,6 +1,11 @@
 import "server-only";
 import { getProducts } from "./queries";
-import { getRevenueByProduct, getRevenueByPaymentMethod, periodToRange } from "./revenue";
+import {
+  getRevenueByProduct,
+  getRevenueByPaymentMethod,
+  getRevenueSummary,
+  periodToRange,
+} from "./revenue";
 import { formatQty, formatRupiah } from "./format";
 
 /**
@@ -53,4 +58,30 @@ export async function buildDailySummaryMessage(now = new Date()): Promise<string
   }
 
   return lines.join("\n");
+}
+
+/**
+ * Build a quick revenue report: totals for today / this week / this month /
+ * this year, plus this month's payment-method breakdown.
+ */
+export async function buildRevenueReportMessage(now = new Date()): Promise<string> {
+  const [today, week, month, year, byPayment] = await Promise.all([
+    getRevenueSummary("today"),
+    getRevenueSummary("week"),
+    getRevenueSummary("month"),
+    getRevenueSummary("year"),
+    getRevenueByPaymentMethod(periodToRange("month", now)),
+  ]);
+
+  return [
+    "📈 Laporan Pendapatan",
+    "",
+    `Hari ini: ${formatRupiah(today)}`,
+    `Minggu ini: ${formatRupiah(week)}`,
+    `Bulan ini: ${formatRupiah(month)}`,
+    `Tahun ini: ${formatRupiah(year)}`,
+    "",
+    "Metode Bayar (bulan ini):",
+    ...byPayment.map((p) => `- ${p.label}: ${formatRupiah(p.revenue)}`),
+  ].join("\n");
 }

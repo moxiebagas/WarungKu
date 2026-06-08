@@ -26,6 +26,8 @@ export const MSG_HELP = [
   "Cek: cek beras | stok",
   "",
   "Harga: harga beras 15000 | cek harga beras",
+  "",
+  "Lainnya: report | summary | bantuan",
 ].join("\n");
 
 export function msgAmbiguous(names: string[]): string {

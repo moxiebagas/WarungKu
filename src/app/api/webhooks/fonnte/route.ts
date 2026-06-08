@@ -68,88 +68,108 @@ interface Extracted {
 /**
  * Map a Fonnte payload to { isGroup, groupId, sender, message }.
  *
- * Fonnte group payloads put the GROUP id in `sender` and the actual
- * participant in `member`/`pengirim`. Personal payloads put the person in
- * `sender`/`pengirim`. `text` is NOT the message (Fonnte uses it for markers
- * like "non-button message"); the real text is in `message`/`pesan`.
+ * Per Fonnte's webhook docs, GROUP messages carry:
+ *   - sender  = the group id (e.g. 120363429064888611@g.us)
+ *   - member  = the group participant who actually sent the message
+ *   - message = the text
+ * PERSONAL messages carry the person in `sender` and no `member`.
+ *
+ * The presence of a non-empty `member` is therefore the most reliable
+ * group signal (the inbound `sender` may or may not include the `@g.us`
+ * suffix). `text` is NOT the message — Fonnte uses it for markers like
+ * "non-button message"; the real text is in `message` / `pesan`.
  */
 function extract(payload: Payload): Extracted {
+  const member = pick(payload, ["member", "participant", "author"]);
+  const senderField = pick(payload, ["sender", "from", "phone"]);
+  const message = pick(payload, ["message", "pesan", "body"]);
+
   const isGroup =
     payload.isgroup === true ||
     payload.isgroup === "true" ||
-    (typeof payload.sender === "string" && payload.sender.includes("@g.us")) ||
+    Boolean(member) ||
+    (typeof senderField === "string" && senderField.includes("@g.us")) ||
     Boolean(pick(payload, ["group"]));
 
-  const senderField = pick(payload, ["sender"]);
-  const groupId = pick(payload, ["group"]) ?? (isGroup ? senderField ?? null : null);
+  if (isGroup) {
+    // group id from `sender` (fall back to an explicit `group` field)
+    const groupId = pick(payload, ["group"]) ?? senderField ?? null;
+    // participant from `member` (never from `sender`, which is the group)
+    const sender = member ?? pick(payload, ["pengirim"]) ?? null;
+    return { isGroup: true, groupId, sender, message };
+  }
 
-  // The participant: prefer fields that are always the human sender.
-  let sender = pick(payload, ["pengirim", "member", "participant", "author"]);
-  if (!sender && !isGroup) sender = pick(payload, ["sender", "from", "phone", "username"]);
-
-  const message = pick(payload, ["message", "pesan", "body"]);
-
-  return { isGroup, groupId: groupId ?? null, sender: sender ?? null, message };
+  // personal chat
+  const sender = senderField ?? pick(payload, ["pengirim", "username"]) ?? null;
+  return { isGroup: false, groupId: null, sender, message };
 }
 
 export async function POST(req: Request) {
   try {
     const payload = await readPayload(req);
-    console.log("[fonnte webhook] raw payload", JSON.stringify(payload));
+    console.log("[wa webhook] raw payload", JSON.stringify(payload));
 
     const { isGroup, groupId, sender, message } = extract(payload);
+    const phone = sender ? normalizePhone(sender) : null;
     console.log(
-      "[fonnte webhook] extracted",
-      JSON.stringify({ isGroup, groupId, sender, message })
+      "[wa webhook] extracted",
+      JSON.stringify({ isGroup, groupId, senderPhone: phone, messageText: message })
     );
 
     const configuredGroup = process.env.WHATSAPP_GROUP_ID || null;
 
     // ---- Group gating: only the configured group is processed ----
     if (configuredGroup) {
-      if (!isGroup || !groupId || normalizeGroupId(groupId) !== normalizeGroupId(configuredGroup)) {
+      const reason = !isGroup
+        ? "personal_chat"
+        : !groupId || normalizeGroupId(groupId) !== normalizeGroupId(configuredGroup)
+          ? "other_group"
+          : null;
+      if (reason) {
         console.log(
-          JSON.stringify({
-            event: "ignored_wrong_source",
-            isGroup,
-            groupId,
-            reason: !isGroup ? "personal_chat" : "other_group",
-            action: "ignored",
-          })
+          "[wa webhook] validation",
+          JSON.stringify({ result: "ignored", reason, groupId })
         );
-        return NextResponse.json({ ok: true, ignored: true });
+        return NextResponse.json({ ok: true, ignored: true, reason });
       }
     }
 
-    if (!sender || typeof message !== "string") {
-      console.warn("[fonnte webhook] missing sender/message", JSON.stringify({ sender, message }));
-      return NextResponse.json(
-        { ok: false, error: "missing sender or message", keys: Object.keys(payload) },
-        { status: 200 }
+    if (!phone || typeof message !== "string") {
+      console.log(
+        "[wa webhook] validation",
+        JSON.stringify({ result: "ignored", reason: "missing_sender_or_message" })
       );
+      return NextResponse.json({ ok: true, ignored: true, reason: "missing_sender_or_message" });
     }
 
-    const phone = normalizePhone(sender);
-    if (!phone) {
-      return NextResponse.json({ ok: false, error: "invalid sender" }, { status: 200 });
-    }
+    console.log(
+      "[wa webhook] validation",
+      JSON.stringify({ result: "accepted", groupId, senderPhone: phone })
+    );
 
     // Authorization (registered + active sender) happens inside the handler.
     const reply = await handleIncomingMessage(phone, message);
-    console.log("[fonnte webhook] reply", JSON.stringify({ phone, fromGroup: isGroup, reply }));
 
     let sendOk: boolean | null = null;
+    let responseTarget: string | null = null;
     if (reply) {
-      // Replies go back to the group when the command came from the group;
-      // otherwise (legacy personal mode, no group configured) reply to sender.
-      const result =
-        configuredGroup && isGroup
-          ? await sendWhatsappToGroup(configuredGroup, reply)
-          : await sendWhatsappMessage(phone, reply);
-      sendOk = result.ok;
+      // Replies always go to the configured group; only legacy personal mode
+      // (no group configured) replies to the sender directly.
+      if (configuredGroup) {
+        responseTarget = configuredGroup;
+        sendOk = (await sendWhatsappToGroup(configuredGroup, reply)).ok;
+      } else {
+        responseTarget = phone;
+        sendOk = (await sendWhatsappMessage(phone, reply)).ok;
+      }
     }
 
-    return NextResponse.json({ ok: true, replied: reply !== null, sendOk });
+    console.log(
+      "[wa webhook] result",
+      JSON.stringify({ replied: reply !== null, responseTarget, sendOk })
+    );
+
+    return NextResponse.json({ ok: true, replied: reply !== null, sendOk, responseTarget });
   } catch (err) {
     console.error("[fonnte webhook] error", err);
     return NextResponse.json(

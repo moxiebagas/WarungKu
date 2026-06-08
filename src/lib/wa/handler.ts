@@ -5,15 +5,16 @@ import { normalizeMessage, parseCommand } from "./parser";
 import type { MovementType, PaymentMethod, Product } from "../types";
 import { getStockStatus } from "../format";
 import { executeStockMovement, updateProductPrice } from "../stock-core";
+import { buildDailySummaryMessage, buildRevenueReportMessage } from "../summary";
 import * as M from "./messages";
 
 function allowNegativeStock(): boolean {
   return process.env.ALLOW_NEGATIVE_STOCK === "true";
 }
 
-// Help is opt-in only: examples are sent ONLY when an authorized sender
-// explicitly asks for them, never as a fallback for unknown text.
 const HELP_TRIGGERS = new Set(["format", "bantuan", "help", "contoh", "menu"]);
+const SUMMARY_TRIGGERS = new Set(["summary", "ringkasan"]);
+const REPORT_TRIGGERS = new Set(["report", "laporan"]);
 
 /**
  * Process one incoming WhatsApp message and return the reply text, or `null`
@@ -69,10 +70,18 @@ export async function handleIncomingMessage(
   const normalized = normalizeMessage(rawMessage);
   if (!normalized) return null;
 
-  // ---- 5. Opt-in help command ----
+  // ---- 5. Keyword commands: help / summary / report ----
   if (HELP_TRIGGERS.has(normalized)) {
     console.log("[wa] help requested", { phone: phoneNumber });
     return M.MSG_HELP;
+  }
+  if (SUMMARY_TRIGGERS.has(normalized)) {
+    console.log("[wa] summary requested", { phone: phoneNumber });
+    return buildDailySummaryMessage();
+  }
+  if (REPORT_TRIGGERS.has(normalized)) {
+    console.log("[wa] report requested", { phone: phoneNumber });
+    return buildRevenueReportMessage();
   }
 
   // ---- 6. Valid command -> execute and reply ----
