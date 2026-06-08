@@ -4,7 +4,10 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   Legend,
+  Pie,
+  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -15,6 +18,11 @@ import { formatRupiah } from "@/lib/format";
 const GREEN = "#16a34a";
 const RED = "#dc2626";
 const BLUE = "#2563eb";
+const PAYMENT_COLORS: Record<string, string> = {
+  Tunai: "#16a34a",
+  QRIS: "#2563eb",
+  Hutang: "#f59e0b",
+};
 
 function Empty({ label }: { label: string }) {
   return (
@@ -69,6 +77,29 @@ export function RevenueChart({
         <Tooltip formatter={(v: number) => [formatRupiah(v), "Pendapatan"]} />
         <Bar dataKey="revenue" name="Pendapatan" fill={color} radius={[4, 4, 0, 0]} />
       </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+/** Sales revenue grouped by payment method (donut). */
+export function PaymentMethodChart({
+  data,
+}: {
+  data: { label: string; revenue: number }[];
+}) {
+  const total = data.reduce((s, d) => s + d.revenue, 0);
+  if (total === 0) return <Empty label="Belum ada penjualan pada periode ini." />;
+  return (
+    <ResponsiveContainer width="100%" height={260}>
+      <PieChart>
+        <Pie data={data} dataKey="revenue" nameKey="label" innerRadius={55} outerRadius={90} label>
+          {data.map((entry) => (
+            <Cell key={entry.label} fill={PAYMENT_COLORS[entry.label] ?? "#94a3b8"} />
+          ))}
+        </Pie>
+        <Tooltip formatter={(v: number) => [formatRupiah(v), "Pendapatan"]} />
+        <Legend />
+      </PieChart>
     </ResponsiveContainer>
   );
 }

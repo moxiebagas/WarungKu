@@ -1,4 +1,5 @@
-import type { MovementType } from "../types";
+import type { MovementType, PaymentMethod } from "../types";
+import { PAYMENT_LABEL } from "../types";
 import { formatQty, formatRupiah } from "../format";
 
 /** All user-facing WhatsApp text — short, clear, Indonesian. */
@@ -12,6 +13,11 @@ export const MSG_INVALID_PRICE = "Harga tidak valid. Contoh: harga beras 15000";
 
 export const MSG_HELP = [
   "Format perintah:",
+  "",
+  "Jual (dengan metode bayar):",
+  "jual minyak 2 cash",
+  "jual beras 1 qris",
+  "jual gula 3 hutang",
   "",
   "Update stok:",
   "beras +2",
@@ -44,8 +50,10 @@ export function msgStockSuccess(params: {
   stockAfter: number;
   totalAmount: number;
   unitPrice: number;
+  paymentMethod?: PaymentMethod | null;
 }): string {
-  const { movementType, productName, qty, unit, stockAfter, totalAmount, unitPrice } = params;
+  const { movementType, productName, qty, unit, stockAfter, totalAmount, unitPrice, paymentMethod } =
+    params;
   const lines = ["✅ Berhasil."];
 
   if (movementType === "IN") {
@@ -57,9 +65,10 @@ export function msgStockSuccess(params: {
     if (unitPrice > 0) {
       lines.push(`Pendapatan tercatat: ${formatRupiah(totalAmount)}.`);
     } else {
-      lines.push(
-        "Harga barang masih Rp0 sehingga pendapatan tidak tercatat."
-      );
+      lines.push("Harga barang masih Rp0 sehingga pendapatan tidak tercatat.");
+    }
+    if (paymentMethod) {
+      lines.push(`Metode bayar: ${PAYMENT_LABEL[paymentMethod]}.`);
     }
   } else {
     lines.push(`Stok ${productName} di-set menjadi ${formatQty(stockAfter)} ${unit}.`);

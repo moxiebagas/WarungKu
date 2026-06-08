@@ -11,6 +11,7 @@ import {
 import { getProducts } from "@/lib/queries";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { formatDateTime, formatQty, MOVEMENT_LABEL } from "@/lib/format";
+import { PAYMENT_LABEL } from "@/lib/types";
 import type { MovementWithProduct } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,7 @@ interface SearchParams {
   product?: string;
   type?: string;
   source?: string;
+  payment?: string;
   from?: string;
   to?: string;
 }
@@ -40,6 +42,7 @@ export default async function HistoryPage({
   if (sp.product) query = query.eq("product_id", sp.product);
   if (sp.type) query = query.eq("movement_type", sp.type);
   if (sp.source) query = query.eq("source", sp.source);
+  if (sp.payment) query = query.eq("payment_method", sp.payment);
   if (sp.from) query = query.gte("created_at", `${sp.from}T00:00:00+07:00`);
   if (sp.to) query = query.lte("created_at", `${sp.to}T23:59:59+07:00`);
 
@@ -67,6 +70,7 @@ export default async function HistoryPage({
               <TableHead className="text-right">Jumlah</TableHead>
               <TableHead className="text-right">Sebelum</TableHead>
               <TableHead className="text-right">Sesudah</TableHead>
+              <TableHead>Bayar</TableHead>
               <TableHead>Sumber</TableHead>
               <TableHead>Catatan</TableHead>
             </TableRow>
@@ -74,7 +78,7 @@ export default async function HistoryPage({
           <TableBody>
             {movements.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center text-muted-foreground">
+                <TableCell colSpan={9} className="text-center text-muted-foreground">
                   Tidak ada data sesuai filter.
                 </TableCell>
               </TableRow>
@@ -92,6 +96,9 @@ export default async function HistoryPage({
                   <TableCell className="text-right">{formatQty(m.stock_before)}</TableCell>
                   <TableCell className="text-right font-medium">
                     {formatQty(m.stock_after)}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {m.payment_method ? PAYMENT_LABEL[m.payment_method] : "-"}
                   </TableCell>
                   <TableCell>
                     <Badge variant={m.source === "WHATSAPP" ? "default" : "secondary"}>

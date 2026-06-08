@@ -15,12 +15,16 @@ import { getProducts } from "@/lib/queries";
 import {
   getRevenueByDate,
   getRevenueByProduct,
+  getRevenueByPaymentMethod,
   periodToRange,
   type DateRange,
   type Period,
 } from "@/lib/revenue";
+import { PaymentMethodChart } from "@/components/charts";
 import { formatQty, formatRupiah, formatDate } from "@/lib/format";
 import { shortDateLabel } from "@/lib/datetime";
+import { PAYMENT_METHODS } from "@/lib/types";
+import type { PaymentMethod } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +35,7 @@ interface SearchParams {
   from?: string;
   to?: string;
   product?: string;
+  payment?: string;
 }
 
 function resolveRange(sp: SearchParams): { range: DateRange; label: string } {
@@ -59,11 +64,15 @@ export default async function ReportsPage({
   const sp = await searchParams;
   const { range, label } = resolveRange(sp);
   const productId = sp.product;
+  const paymentMethod = (PAYMENT_METHODS as string[]).includes(sp.payment ?? "")
+    ? (sp.payment as PaymentMethod)
+    : undefined;
 
-  const [products, byProduct, byDate] = await Promise.all([
+  const [products, byProduct, byDate, byPayment] = await Promise.all([
     getProducts(),
-    getRevenueByProduct(range, productId),
-    getRevenueByDate(range, productId),
+    getRevenueByProduct(range, productId, paymentMethod),
+    getRevenueByDate(range, productId, paymentMethod),
+    getRevenueByPaymentMethod(range, productId),
   ]);
 
   const totalRevenue = byProduct.reduce((s, r) => s + r.revenue, 0);
@@ -83,6 +92,46 @@ export default async function ReportsPage({
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <StatCard title="Total Pendapatan" value={formatRupiah(totalRevenue)} icon={Wallet} />
         <StatCard title="Total Qty Terjual" value={formatQty(totalQty)} icon={ShoppingCart} />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Pendapatan per Metode Bayar</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <PaymentMethodChart
+              data={byPayment.map((p) => ({ label: p.label, revenue: p.revenue }))}
+            />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Rincian Metode Bayar</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Metode</TableHead>
+                  <TableHead className="text-right">Qty Terjual</TableHead>
+                  <TableHead className="text-right">Pendapatan</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {byPayment.map((r) => (
+                  <TableRow key={r.method}>
+                    <TableCell className="font-medium">{r.label}</TableCell>
+                    <TableCell className="text-right">{formatQty(r.qty)}</TableCell>
+                    <TableCell className="text-right font-medium">
+                      {formatRupiah(r.revenue)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       </div>
 
       <Card>

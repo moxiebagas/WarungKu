@@ -32,36 +32,40 @@ export function ReportFilters({ products }: { products: Product[] }) {
 
   const activePeriod = params.get("period") ?? (params.get("from") || params.get("to") ? "" : "month");
   const [productId, setProductId] = React.useState(params.get("product") ?? ALL);
+  const [payment, setPayment] = React.useState(params.get("payment") ?? ALL);
   const [from, setFrom] = React.useState(params.get("from") ?? "");
   const [to, setTo] = React.useState(params.get("to") ?? "");
 
-  function go(q: URLSearchParams) {
-    if (productId !== ALL) q.set("product", productId);
-    router.push(`/reports?${q.toString()}`);
-  }
-
-  function applyPeriod(period: string) {
+  function pushWith(o: {
+    mode?: "period" | "range";
+    period?: string;
+    product?: string;
+    payment?: string;
+  }) {
+    const product = o.product ?? productId;
+    const pay = o.payment ?? payment;
     const q = new URLSearchParams();
-    q.set("period", period);
-    go(q);
-  }
 
-  function applyCustom() {
-    const q = new URLSearchParams();
-    if (from) q.set("from", from);
-    if (to) q.set("to", to);
-    if (!from && !to) q.set("period", "month");
-    go(q);
-  }
+    if (o.mode === "period") {
+      q.set("period", o.period!);
+    } else if (o.mode === "range") {
+      if (from) q.set("from", from);
+      if (to) q.set("to", to);
+      if (!from && !to) q.set("period", "month");
+    } else {
+      // preserve current period/range
+      const f = params.get("from");
+      const t = params.get("to");
+      if (f || t) {
+        if (f) q.set("from", f);
+        if (t) q.set("to", t);
+      } else {
+        q.set("period", params.get("period") || "month");
+      }
+    }
 
-  function applyProductOnly(value: string) {
-    setProductId(value);
-    const q = new URLSearchParams();
-    const period = params.get("period");
-    if (period) q.set("period", period);
-    if (from) q.set("from", from);
-    if (to) q.set("to", to);
-    if (value !== ALL) q.set("product", value);
+    if (product !== ALL) q.set("product", product);
+    if (pay !== ALL) q.set("payment", pay);
     router.push(`/reports?${q.toString()}`);
   }
 
@@ -73,17 +77,23 @@ export function ReportFilters({ products }: { products: Product[] }) {
             key={p.value}
             size="sm"
             variant={activePeriod === p.value ? "default" : "outline"}
-            onClick={() => applyPeriod(p.value)}
+            onClick={() => pushWith({ mode: "period", period: p.value })}
           >
             {p.label}
           </Button>
         ))}
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <div className="space-y-1.5">
           <Label>Barang</Label>
-          <Select value={productId} onValueChange={applyProductOnly}>
+          <Select
+            value={productId}
+            onValueChange={(v) => {
+              setProductId(v);
+              pushWith({ product: v });
+            }}
+          >
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
@@ -94,6 +104,26 @@ export function ReportFilters({ products }: { products: Product[] }) {
                   {p.name}
                 </SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1.5">
+          <Label>Metode Bayar</Label>
+          <Select
+            value={payment}
+            onValueChange={(v) => {
+              setPayment(v);
+              pushWith({ payment: v });
+            }}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>Semua metode</SelectItem>
+              <SelectItem value="cash">Tunai</SelectItem>
+              <SelectItem value="qris">QRIS</SelectItem>
+              <SelectItem value="hutang">Hutang</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -109,7 +139,7 @@ export function ReportFilters({ products }: { products: Product[] }) {
           <Button
             className={cn("w-full", (from || to) && activePeriod === "" && "ring-2 ring-ring")}
             variant="secondary"
-            onClick={applyCustom}
+            onClick={() => pushWith({ mode: "range" })}
           >
             Terapkan Rentang
           </Button>

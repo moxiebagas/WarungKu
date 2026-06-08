@@ -2,7 +2,7 @@ import "server-only";
 import { getSupabaseAdmin } from "../supabase/admin";
 import { matchProduct } from "./match";
 import { normalizeMessage, parseCommand } from "./parser";
-import type { MovementType, Product } from "../types";
+import type { MovementType, PaymentMethod, Product } from "../types";
 import { getStockStatus } from "../format";
 import { executeStockMovement, updateProductPrice } from "../stock-core";
 import * as M from "./messages";
@@ -94,7 +94,8 @@ export async function handleIncomingMessage(
         command.product,
         command.movementType,
         command.qty,
-        normalized
+        normalized,
+        command.paymentMethod
       );
     // ---- 7. Unsupported command: log only, send nothing ----
     case "unknown":
@@ -176,7 +177,8 @@ async function handleUpdate(
   productText: string,
   movementType: MovementType,
   qty: number,
-  rawMessage: string
+  rawMessage: string,
+  paymentMethod?: PaymentMethod
 ): Promise<string> {
   if (!Number.isFinite(qty) || qty <= 0) return M.MSG_INVALID_QTY;
 
@@ -209,6 +211,7 @@ async function handleUpdate(
     source: "WHATSAPP",
     phoneNumber,
     rawMessage,
+    paymentMethod: movementType === "OUT" ? paymentMethod ?? "cash" : null,
   });
 
   if (!exec.ok) {
@@ -232,5 +235,6 @@ async function handleUpdate(
     stockAfter: d.stockAfter,
     totalAmount: d.totalAmount,
     unitPrice: d.unitPrice,
+    paymentMethod: d.paymentMethod,
   });
 }

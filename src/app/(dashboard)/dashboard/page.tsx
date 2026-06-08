@@ -19,7 +19,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { WeeklyMovementChart, RevenueChart, TopProductsChart } from "@/components/charts";
+import {
+  WeeklyMovementChart,
+  RevenueChart,
+  TopProductsChart,
+  PaymentMethodChart,
+} from "@/components/charts";
 import { getDashboardData } from "@/lib/queries";
 import { formatDateTime, formatQty, formatRupiah } from "@/lib/format";
 
@@ -95,7 +100,17 @@ export default async function DashboardPage() {
             />
           </CardContent>
         </Card>
-        <Card className="lg:col-span-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Penjualan per Metode Bayar (Bulan Ini)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <PaymentMethodChart
+              data={d.paymentBreakdown.map((p) => ({ label: p.label, revenue: p.revenue }))}
+            />
+          </CardContent>
+        </Card>
+        <Card>
           <CardHeader>
             <CardTitle>Pergerakan Masuk vs Keluar (7 Hari)</CardTitle>
           </CardHeader>

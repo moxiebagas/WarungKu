@@ -15,8 +15,10 @@ shadcn/ui-style components · Recharts · Fonnte WhatsApp webhook · Vercel.
 2. Open **SQL Editor** and run [`supabase/schema.sql`](supabase/schema.sql).
 3. Run [`supabase/migration_pricing.sql`](supabase/migration_pricing.sql) to add
    pricing/revenue columns and the immediate-execution RPC. (Required.)
-4. Then run [`supabase/seed.sql`](supabase/seed.sql) to load the sample products.
-5. From **Project Settings → API**, copy the Project URL, the `anon` key,
+4. Run [`supabase/migration_payments.sql`](supabase/migration_payments.sql) to add
+   the `payment_method` column and the low-stock-alert RPC return. (Required.)
+5. Then run [`supabase/seed.sql`](supabase/seed.sql) to load the sample products.
+6. From **Project Settings → API**, copy the Project URL, the `anon` key,
    and the `service_role` key.
 
 RLS is enabled on every table with no public policies — all access goes
@@ -32,7 +34,19 @@ Copy `.env.local.example` to `.env.local` and fill in:
 | `SUPABASE_SERVICE_ROLE_KEY` | **Server only.** Never expose to the client. |
 | `SUPABASE_ANON_KEY` | Public anon key (kept for completeness) |
 | `FONNTE_TOKEN` | Device token from [md.fonnte.com](https://md.fonnte.com/) |
+| `WHATSAPP_GROUP_ID` | Fonnte group id (e.g. `1203...@g.us`) for daily summaries + low-stock alerts |
+| `CRON_SECRET` | Secret protecting the daily-summary cron endpoint (Vercel sends it automatically) |
 | `ALLOW_NEGATIVE_STOCK` | `true` to permit OUT below zero (default `false`) |
+
+### Daily summary & low-stock alerts
+
+- **Daily summary** is sent to `WHATSAPP_GROUP_ID` every day via Vercel Cron —
+  see [`vercel.json`](vercel.json), scheduled at `0 15 * * *` UTC = **22:00 WIB**.
+  Change the cron expression if your timezone differs. Test manually with
+  `GET /api/cron/daily-summary?secret=<CRON_SECRET>`.
+- **Low-stock alert** fires in real time to the same group the moment a sale
+  pushes a product's stock to or below its `min_stock` (only on the crossing
+  transaction, so it won't spam on every subsequent sale).
 
 ## 3. Run locally
 
@@ -61,13 +75,19 @@ A `GET` on the webhook URL returns `{ "ok": true }` for a quick health check.
 
 | Command | Meaning |
 | --- | --- |
+| `jual minyak 2 cash` | Sell 2 Minyak, payment = cash (also `qris`, `hutang`) |
 | `beras +25` | Add 25 to Beras |
-| `beras -5` | Reduce 5 from Beras (recorded as a sale → revenue) |
+| `beras -5` | Reduce 5 from Beras (recorded as a cash sale → revenue) |
 | `stok beras 10` | Set Beras stock to exactly 10 |
 | `harga beras 15000` | Set Beras selling price (also `set harga beras 15000`, `beras harga 15000`) |
 | `cek beras` | Show Beras stock, price, and stock value |
 | `cek harga beras` | Show Beras selling price |
 | `stok` | Show full stock summary (low stock first) |
+
+**Payment methods:** `cash`, `qris`, `hutang`. Use the `jual <product> <qty> <method>`
+form to set it explicitly; `<product> -<qty>` and `jual` without a method default
+to `cash`. The method is snapshotted on the sale and drives the payment breakdowns
+in reports and charts.
 
 Commands execute **immediately** once valid — there is no confirmation step.
 Prices accept Indonesian formats (`15000`, `15.000`, `15,000`).

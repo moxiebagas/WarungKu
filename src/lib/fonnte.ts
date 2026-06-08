@@ -9,13 +9,11 @@ export interface SendResult {
   error?: string;
 }
 
-/**
- * Send a WhatsApp message through the Fonnte gateway.
- * Phone number should be in international format without `+` (e.g. 6281234567890).
- */
-export async function sendWhatsappMessage(
-  phoneNumber: string,
-  message: string
+/** Low-level Fonnte send. `extra` lets callers add fields like countryCode. */
+async function postFonnte(
+  target: string,
+  message: string,
+  extra: Record<string, string> = {}
 ): Promise<SendResult> {
   const token = process.env.FONNTE_TOKEN;
   if (!token) {
@@ -30,11 +28,7 @@ export async function sendWhatsappMessage(
         Authorization: token,
         "Content-Type": "application/x-www-form-urlencoded",
       },
-      body: new URLSearchParams({
-        target: phoneNumber,
-        message,
-        countryCode: "62",
-      }),
+      body: new URLSearchParams({ target, message, ...extra }),
     });
 
     const body = await res.json().catch(() => null);
@@ -48,18 +42,31 @@ export async function sendWhatsappMessage(
     if (!ok) {
       console.error(
         "[fonnte] send failed",
-        JSON.stringify({ httpStatus: res.status, body, target: phoneNumber })
+        JSON.stringify({ httpStatus: res.status, body, target })
       );
       return { ok: false, status: res.status, body };
     }
 
-    console.log(
-      "[fonnte] send ok",
-      JSON.stringify({ target: phoneNumber, body })
-    );
+    console.log("[fonnte] send ok", JSON.stringify({ target, body }));
     return { ok: true, status: res.status, body };
   } catch (err) {
     console.error("[fonnte] send error", err);
     return { ok: false, error: (err as Error).message };
   }
+}
+
+/**
+ * Send a WhatsApp message to a person.
+ * Phone number should be in international format without `+` (e.g. 6281234567890).
+ */
+export function sendWhatsappMessage(phoneNumber: string, message: string): Promise<SendResult> {
+  return postFonnte(phoneNumber, message, { countryCode: "62" });
+}
+
+/**
+ * Send a WhatsApp message to a group. The target is the Fonnte group id,
+ * e.g. "120363012345678901@g.us". No countryCode is applied for groups.
+ */
+export function sendWhatsappToGroup(groupId: string, message: string): Promise<SendResult> {
+  return postFonnte(groupId, message);
 }

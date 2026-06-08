@@ -1,6 +1,7 @@
 import "server-only";
 import { getSupabaseAdmin } from "./supabase/admin";
-import type { MovementType } from "./types";
+import { maybeSendLowStockAlert } from "./notify";
+import type { MovementType, PaymentMethod } from "./types";
 
 export interface MovementResult {
   productId: string;
@@ -13,6 +14,8 @@ export interface MovementResult {
   unitPrice: number;
   totalAmount: number;
   sellingPrice: number;
+  minStock: number;
+  paymentMethod: PaymentMethod | null;
 }
 
 export type ExecResult =
@@ -37,6 +40,7 @@ export async function executeStockMovement(input: {
   phoneNumber?: string | null;
   rawMessage?: string | null;
   note?: string | null;
+  paymentMethod?: PaymentMethod | null;
 }): Promise<ExecResult> {
   const supabase = getSupabaseAdmin();
 
@@ -48,6 +52,7 @@ export async function executeStockMovement(input: {
     p_phone_number: input.phoneNumber ?? null,
     p_raw_message: input.rawMessage ?? null,
     p_note: input.note ?? null,
+    p_payment_method: input.paymentMethod ?? null,
   });
 
   if (error) {
@@ -80,9 +85,15 @@ export async function executeStockMovement(input: {
     unitPrice: Number(row.unit_price),
     totalAmount: Number(row.total_amount),
     sellingPrice: Number(row.selling_price),
+    minStock: Number(row.min_stock),
+    paymentMethod: (row.payment_method ?? null) as MovementResult["paymentMethod"],
   };
 
   console.log("[stock] movement executed", result);
+
+  // Real-time low-stock alert to the configured group (never throws).
+  await maybeSendLowStockAlert(result);
+
   return { ok: true, data: result };
 }
 

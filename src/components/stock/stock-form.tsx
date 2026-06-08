@@ -14,13 +14,15 @@ import {
 } from "@/components/ui/select";
 import { applyManualMovement } from "@/lib/actions/stock";
 import { formatQty } from "@/lib/format";
-import type { MovementType, Product } from "@/lib/types";
+import { PAYMENT_LABEL, PAYMENT_METHODS } from "@/lib/types";
+import type { MovementType, PaymentMethod, Product } from "@/lib/types";
 
 export function StockForm({ products }: { products: Product[] }) {
   const [productId, setProductId] = React.useState<string>("");
   const [movementType, setMovementType] = React.useState<MovementType>("IN");
   const [qty, setQty] = React.useState<string>("");
   const [note, setNote] = React.useState<string>("");
+  const [paymentMethod, setPaymentMethod] = React.useState<PaymentMethod>("cash");
   const [pending, startTransition] = React.useTransition();
   const [message, setMessage] = React.useState<{ ok: boolean; text: string } | null>(null);
 
@@ -35,6 +37,7 @@ export function StockForm({ products }: { products: Product[] }) {
         movementType,
         qty: Number(qty),
         note,
+        paymentMethod: movementType === "OUT" ? paymentMethod : undefined,
       });
       if (res.ok) {
         setMessage({ ok: true, text: "Stok berhasil diperbarui." });
@@ -98,6 +101,24 @@ export function StockForm({ products }: { products: Product[] }) {
           />
         </div>
       </div>
+
+      {movementType === "OUT" && (
+        <div className="space-y-2">
+          <Label>Metode Pembayaran</Label>
+          <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PAYMENT_METHODS.map((pm) => (
+                <SelectItem key={pm} value={pm}>
+                  {PAYMENT_LABEL[pm]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       <div className="space-y-2">
         <Label htmlFor="note">Catatan (opsional)</Label>

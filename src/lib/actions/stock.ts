@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { executeStockMovement } from "@/lib/stock-core";
-import type { MovementType } from "@/lib/types";
+import type { MovementType, PaymentMethod } from "@/lib/types";
 import type { ActionResult } from "./products";
 
 export async function applyManualMovement(input: {
@@ -11,6 +11,7 @@ export async function applyManualMovement(input: {
   movementType: MovementType;
   qty: number;
   note?: string;
+  paymentMethod?: PaymentMethod;
 }): Promise<ActionResult> {
   if (!input.productId) return { ok: false, error: "Pilih barang terlebih dahulu." };
   if (!Number.isFinite(input.qty) || input.qty <= 0)
@@ -37,6 +38,7 @@ export async function applyManualMovement(input: {
     qty: input.qty,
     source: "ADMIN",
     note: input.note?.trim() || null,
+    paymentMethod: input.movementType === "OUT" ? input.paymentMethod ?? "cash" : null,
   });
 
   if (!exec.ok) return { ok: false, error: exec.error };

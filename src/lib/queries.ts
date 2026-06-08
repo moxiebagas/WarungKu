@@ -7,9 +7,11 @@ import {
   getMonthlyRevenueSeries,
   getTopProductsByRevenue,
   getTopProductsByQuantity,
+  getRevenueByPaymentMethod,
   periodToRange,
   type Period,
   type RevenueByProductRow,
+  type RevenueByPaymentRow,
 } from "./revenue";
 import { jakartaDateKey, dayLabel, shortDateLabel, monthLabel } from "./datetime";
 
@@ -37,6 +39,7 @@ export interface DashboardData {
   monthlyRevenue: { label: string; revenue: number }[];
   topByRevenue: RevenueByProductRow[];
   topByQuantity: RevenueByProductRow[];
+  paymentBreakdown: RevenueByPaymentRow[];
   weekly: { day: string; IN: number; OUT: number }[];
   recentSales: MovementWithProduct[];
   lowStockProducts: Product[];
@@ -56,6 +59,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     monthlyRaw,
     topByRevenue,
     topByQuantity,
+    paymentBreakdown,
     { data: products },
     { data: weekMovements },
     { data: recent },
@@ -65,6 +69,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     getMonthlyRevenueSeries(12, now),
     getTopProductsByRevenue(monthRange, 10),
     getTopProductsByQuantity(monthRange, 10),
+    getRevenueByPaymentMethod(monthRange),
     supabase.from("products").select("*").eq("is_active", true),
     supabase.from("stock_movements").select("*").gte("created_at", sevenDaysAgo.toISOString()),
     supabase
@@ -122,6 +127,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     monthlyRevenue: monthlyRaw.map((r) => ({ label: monthLabel(r.month), revenue: r.revenue })),
     topByRevenue,
     topByQuantity,
+    paymentBreakdown,
     weekly,
     recentSales,
     lowStockProducts,

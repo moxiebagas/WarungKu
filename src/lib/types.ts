@@ -1,6 +1,15 @@
 export type MovementType = "IN" | "OUT" | "ADJUSTMENT";
 export type PendingStatus = "PENDING" | "CONFIRMED" | "CANCELLED" | "EXPIRED";
 export type StockStatus = "Aman" | "Menipis" | "Habis";
+export type PaymentMethod = "cash" | "qris" | "hutang";
+
+export const PAYMENT_METHODS: PaymentMethod[] = ["cash", "qris", "hutang"];
+
+export const PAYMENT_LABEL: Record<PaymentMethod, string> = {
+  cash: "Tunai",
+  qris: "QRIS",
+  hutang: "Hutang",
+};
 
 export interface Product {
   id: string;
@@ -25,6 +34,7 @@ export interface StockMovement {
   stock_after: number;
   unit_price: number;
   total_amount: number;
+  payment_method: PaymentMethod | null;
   source: string;
   phone_number: string | null;
   note: string | null;

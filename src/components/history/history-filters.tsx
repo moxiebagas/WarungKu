@@ -23,6 +23,7 @@ export function HistoryFilters({ products }: { products: Product[] }) {
   const [productId, setProductId] = React.useState(params.get("product") ?? ALL);
   const [type, setType] = React.useState(params.get("type") ?? ALL);
   const [source, setSource] = React.useState(params.get("source") ?? ALL);
+  const [payment, setPayment] = React.useState(params.get("payment") ?? ALL);
   const [from, setFrom] = React.useState(params.get("from") ?? "");
   const [to, setTo] = React.useState(params.get("to") ?? "");
 
@@ -31,6 +32,7 @@ export function HistoryFilters({ products }: { products: Product[] }) {
     if (productId !== ALL) q.set("product", productId);
     if (type !== ALL) q.set("type", type);
     if (source !== ALL) q.set("source", source);
+    if (payment !== ALL) q.set("payment", payment);
     if (from) q.set("from", from);
     if (to) q.set("to", to);
     router.push(`/history?${q.toString()}`);
@@ -40,6 +42,7 @@ export function HistoryFilters({ products }: { products: Product[] }) {
     setProductId(ALL);
     setType(ALL);
     setSource(ALL);
+    setPayment(ALL);
     setFrom("");
     setTo("");
     router.push("/history");
@@ -47,7 +50,7 @@ export function HistoryFilters({ products }: { products: Product[] }) {
 
   return (
     <div className="grid grid-cols-1 gap-3 rounded-lg border bg-card p-4 sm:grid-cols-2 lg:grid-cols-6">
-      <div className="space-y-1.5 lg:col-span-2">
+      <div className="space-y-1.5">
         <Label>Barang</Label>
         <Select value={productId} onValueChange={setProductId}>
           <SelectTrigger>
@@ -87,6 +90,20 @@ export function HistoryFilters({ products }: { products: Product[] }) {
             <SelectItem value={ALL}>Semua</SelectItem>
             <SelectItem value="WHATSAPP">WhatsApp</SelectItem>
             <SelectItem value="ADMIN">Admin</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-1.5">
+        <Label>Bayar</Label>
+        <Select value={payment} onValueChange={setPayment}>
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Semua</SelectItem>
+            <SelectItem value="cash">Tunai</SelectItem>
+            <SelectItem value="qris">QRIS</SelectItem>
+            <SelectItem value="hutang">Hutang</SelectItem>
           </SelectContent>
         </Select>
       </div>

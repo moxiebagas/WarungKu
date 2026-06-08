@@ -1,5 +1,7 @@
 import "server-only";
 import { getSupabaseAdmin } from "./supabase/admin";
+import type { PaymentMethod } from "./types";
+import { PAYMENT_METHODS, PAYMENT_LABEL } from "./types";
 import {
   jakartaDateKey,
   jakartaMonthKey,
@@ -24,6 +26,7 @@ interface OutRow {
   unit_price: number;
   created_at: string;
   product_id: string;
+  payment_method: PaymentMethod | null;
   products: { name: string; unit: string } | null;
 }
 
@@ -53,17 +56,21 @@ export function periodToRange(period: Period, now = new Date()): DateRange {
  */
 async function fetchOutMovements(
   range: DateRange,
-  productId?: string
+  productId?: string,
+  paymentMethod?: PaymentMethod
 ): Promise<OutRow[]> {
   const supabase = getSupabaseAdmin();
   let query = supabase
     .from("stock_movements")
-    .select("qty, total_amount, unit_price, created_at, product_id, products(name, unit)")
+    .select(
+      "qty, total_amount, unit_price, created_at, product_id, payment_method, products(name, unit)"
+    )
     .eq("movement_type", "OUT")
     .gte("created_at", range.start.toISOString())
     .lte("created_at", range.end.toISOString());
 
   if (productId) query = query.eq("product_id", productId);
+  if (paymentMethod) query = query.eq("payment_method", paymentMethod);
 
   const { data, error } = await query;
   if (error) {
@@ -98,9 +105,10 @@ export interface RevenueByDateRow {
 /** Revenue grouped by Jakarta calendar day, ascending. */
 export async function getRevenueByDate(
   range: DateRange,
-  productId?: string
+  productId?: string,
+  paymentMethod?: PaymentMethod
 ): Promise<RevenueByDateRow[]> {
-  const rows = await fetchOutMovements(range, productId);
+  const rows = await fetchOutMovements(range, productId, paymentMethod);
   const map = new Map<string, { revenue: number; qty: number }>();
   for (const r of rows) {
     const key = jakartaDateKey(new Date(r.created_at));
@@ -125,9 +133,10 @@ export interface RevenueByProductRow {
 /** Revenue grouped by product, sorted by revenue desc. */
 export async function getRevenueByProduct(
   range: DateRange,
-  productId?: string
+  productId?: string,
+  paymentMethod?: PaymentMethod
 ): Promise<RevenueByProductRow[]> {
-  const rows = await fetchOutMovements(range, productId);
+  const rows = await fetchOutMovements(range, productId, paymentMethod);
   const map = new Map<string, RevenueByProductRow>();
   for (const r of rows) {
     const slot = map.get(r.product_id) ?? {
@@ -197,6 +206,38 @@ export async function getMonthlyRevenueSeries(
     series.push({ month: key, revenue: map.get(key) ?? 0 });
   }
   return series;
+}
+
+export interface RevenueByPaymentRow {
+  method: PaymentMethod;
+  label: string;
+  revenue: number;
+  qty: number;
+}
+
+/** Revenue grouped by payment method (always returns all three, in order). */
+export async function getRevenueByPaymentMethod(
+  range: DateRange,
+  productId?: string
+): Promise<RevenueByPaymentRow[]> {
+  const rows = await fetchOutMovements(range, productId);
+  const totals = new Map<PaymentMethod, { revenue: number; qty: number }>();
+  for (const pm of PAYMENT_METHODS) totals.set(pm, { revenue: 0, qty: 0 });
+
+  for (const r of rows) {
+    const pm = (r.payment_method ?? "cash") as PaymentMethod;
+    const slot = totals.get(pm);
+    if (!slot) continue;
+    slot.revenue += Number(r.total_amount);
+    slot.qty += Number(r.qty);
+  }
+
+  return PAYMENT_METHODS.map((pm) => ({
+    method: pm,
+    label: PAYMENT_LABEL[pm],
+    revenue: totals.get(pm)!.revenue,
+    qty: totals.get(pm)!.qty,
+  }));
 }
 
 function startOfDay(d: Date): Date {
