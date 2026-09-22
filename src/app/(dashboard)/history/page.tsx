@@ -60,7 +60,7 @@ export default async function HistoryPage({
 
       <HistoryFilters products={products} />
 
-      <div className="rounded-lg border bg-card">
+      <div className="rounded-2xl border border-gray-200 bg-white shadow-theme-sm">
         <Table>
           <TableHeader>
             <TableRow>

@@ -70,7 +70,7 @@ export function ReportFilters({ products }: { products: Product[] }) {
   }
 
   return (
-    <div className="space-y-4 rounded-lg border bg-card p-4">
+    <div className="space-y-4 rounded-2xl border border-gray-200 bg-white shadow-theme-sm p-4">
       <div className="flex flex-wrap gap-2">
         {PERIODS.map((p) => (
           <Button

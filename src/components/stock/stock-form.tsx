@@ -131,7 +131,7 @@ export function StockForm({ products }: { products: Product[] }) {
       </div>
 
       {message && (
-        <p className={message.ok ? "text-sm text-green-600" : "text-sm text-destructive"}>
+        <p className={message.ok ? "text-sm text-success-600" : "text-sm text-destructive"}>
           {message.text}
         </p>
       )}

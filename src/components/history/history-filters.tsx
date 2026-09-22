@@ -49,7 +49,7 @@ export function HistoryFilters({ products }: { products: Product[] }) {
   }
 
   return (
-    <div className="grid grid-cols-1 gap-3 rounded-lg border bg-card p-4 sm:grid-cols-2 lg:grid-cols-6">
+    <div className="grid grid-cols-1 gap-3 rounded-2xl border border-gray-200 bg-white shadow-theme-sm p-4 sm:grid-cols-2 lg:grid-cols-6">
       <div className="space-y-1.5">
         <Label>Barang</Label>
         <Select value={productId} onValueChange={setProductId}>

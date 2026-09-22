@@ -95,7 +95,7 @@ export function ProductsManager({ products }: { products: Product[] }) {
         </Button>
       </div>
 
-      <div className="rounded-lg border bg-card">
+      <div className="rounded-2xl border border-gray-200 bg-white shadow-theme-sm">
         <Table>
           <TableHeader>
             <TableRow>
@@ -243,7 +243,7 @@ export function ProductsManager({ products }: { products: Product[] }) {
                   type="checkbox"
                   name="isActive"
                   defaultChecked={editing.is_active}
-                  className="h-4 w-4"
+                  className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500/20"
                 />
                 Barang aktif
               </label>

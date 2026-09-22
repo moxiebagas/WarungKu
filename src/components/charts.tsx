@@ -15,18 +15,18 @@ import {
 } from "recharts";
 import { formatRupiah } from "@/lib/format";
 
-const GREEN = "#16a34a";
-const RED = "#dc2626";
-const BLUE = "#2563eb";
+const GREEN = "#12b76a";
+const RED = "#f04438";
+const BLUE = "#465fff";
 const PAYMENT_COLORS: Record<string, string> = {
-  Tunai: "#16a34a",
-  QRIS: "#2563eb",
-  Hutang: "#f59e0b",
+  Tunai: "#12b76a",
+  QRIS: "#465fff",
+  Hutang: "#f79009",
 };
 
 function Empty({ label }: { label: string }) {
   return (
-    <div className="flex h-[260px] items-center justify-center text-center text-sm text-muted-foreground">
+    <div className="flex h-[260px] items-center justify-center text-center text-sm text-gray-400">
       {label}
     </div>
   );
@@ -94,7 +94,7 @@ export function PaymentMethodChart({
       <PieChart>
         <Pie data={data} dataKey="revenue" nameKey="label" innerRadius={55} outerRadius={90} label>
           {data.map((entry) => (
-            <Cell key={entry.label} fill={PAYMENT_COLORS[entry.label] ?? "#94a3b8"} />
+            <Cell key={entry.label} fill={PAYMENT_COLORS[entry.label] ?? "#d0d5dd"} />
           ))}
         </Pie>
         <Tooltip formatter={(v: number) => [formatRupiah(v), "Pendapatan"]} />

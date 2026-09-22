@@ -1,5 +1,11 @@
 import type { Metadata } from "next";
+import { Outfit } from "next/font/google";
 import "./globals.css";
+
+const outfit = Outfit({
+  subsets: ["latin"],
+  variable: "--font-outfit",
+});
 
 export const metadata: Metadata = {
   title: "WarungKu",
@@ -12,8 +18,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="id">
-      <body className="min-h-screen bg-muted/30 antialiased">{children}</body>
+    <html lang="id" className={outfit.variable}>
+      <body className="min-h-screen bg-gray-50 font-sans antialiased">{children}</body>
     </html>
   );
 }

@@ -83,7 +83,7 @@ export function NumbersManager({ numbers }: { numbers: AllowedWhatsappNumber[] }
         </Button>
       </div>
 
-      <div className="rounded-lg border bg-card">
+      <div className="rounded-2xl border border-gray-200 bg-white shadow-theme-sm">
         <Table>
           <TableHeader>
             <TableRow>
@@ -164,7 +164,7 @@ export function NumbersManager({ numbers }: { numbers: AllowedWhatsappNumber[] }
                   type="checkbox"
                   name="isActive"
                   defaultChecked={editing.is_active}
-                  className="h-4 w-4"
+                  className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500/20"
                 />
                 Nomor aktif
               </label>
